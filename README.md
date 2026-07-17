@@ -115,7 +115,7 @@ cp -r custom_components/orvibo_lan /path/to/config/custom_components/
 
 ### 空调控制（type=36）
 
-通过智家365 App Frida Hook 逆向分析，各操作使用的命令格式如下：
+|通过抓包分析，各操作使用的命令格式如下：
 
 | 操作 | order | value1 | value2 | value3 | value4 |
 |:----|:------|:------:|:------:|:------:|:------:|
@@ -160,7 +160,7 @@ from lib.lan_controller import *
 
 ### 协议分析
 
-本项目通过 **Frida Hook 智家365 App** 的 `JSONObject.toString()` 方法，实时抓取 App 发送的原始控制包，确定正确字段格式。关键发现：
+通过对比智家365 App 发出的控制包，确定正确字段格式。关键发现：
 
 - AC 控制 **不能用** `order="set property"` — 实测无效
 - 必须传 `groupId=""`（空字符串），删除后网关不转发给子设备
@@ -185,7 +185,6 @@ from lib.lan_controller import *
 ## 致谢
 
 - [orvibohomebridge](https://github.com/yinjimmy/orvibohomebridge) — 在线控制版实现参考
-- 智家365 APK 反编译 + Frida Hook — 协议字段确认
 
 ## License
 
