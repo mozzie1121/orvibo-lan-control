@@ -235,8 +235,22 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
         # 合并更新（保留 online 等云端字段，覆盖 value/properties）
         new_state = dict(old_state)
+
+        # properties 是增量推送的，需要智能合并
+        incoming_props = payload.get("properties")
+        if incoming_props:
+            old_props = new_state.get("properties", {}) or {}
+            if isinstance(old_props, dict) and isinstance(incoming_props, dict):
+                merged_props = dict(old_props)
+                merged_props.update(incoming_props)
+                new_state["properties"] = merged_props
+            else:
+                new_state["properties"] = incoming_props
+        elif "properties" in payload:
+            new_state["properties"] = payload["properties"]
+
         for key in ("value1", "value2", "value3", "value4",
-                     "properties", "statusType", "subDeviceType",
+                     "statusType", "subDeviceType",
                      "alarmType", "online"):
             if key in payload:
                 new_state[key] = payload[key]
@@ -244,8 +258,7 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                                                old_state.get("updateTime", ""))
 
         self.device_states[did] = new_state
-        _LOGGER.warning(f"cmd=42 全量 payload: {payload}")
-        _LOGGER.warning(f"cmd=42 合并后新状态: {new_state}")
+        _LOGGER.debug(f"cmd=42 更新: {did[:16]}.. props={payload.get('properties', payload.get('value1','?'))}")
 
         # 通知 HA 状态变更（触发各平台的 _handle_coordinator_update）
         self.async_set_updated_data(self.device_states)

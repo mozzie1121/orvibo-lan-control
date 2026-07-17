@@ -22,7 +22,8 @@ TYPE_COLOR_MODE_MAP = {
     502: "brightness",
     503: "color_temp",
     0: "brightness",
-    1: "onoff",
+    1: "color_temp",
+    2: "onoff",
 }
 
 
