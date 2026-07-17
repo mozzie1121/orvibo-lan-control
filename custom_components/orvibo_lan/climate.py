@@ -132,18 +132,19 @@ async def async_setup_entry(
             uid = self._device.get("uid", "")
             
             if hvac_mode == "off":
-                # 实测: order="off" v1=1 关空调
                 payload = dc.ac_off(self._device_id, uid, username=self.coordinator.username)
                 _LOGGER.debug("[AC] 发关机: off")
                 await self._send_ac(payload)
             else:
-                # 实测: order="mode setting" v1=0 + v2=模式 开空调+切模式
                 mode_map = {"cool": 3, "heat": 4, "dry": 2, "fan_only": 7}
                 mode_str = str(hvac_mode).split(".")[-1].lower() if "." in str(hvac_mode) else str(hvac_mode).lower()
                 mode_val = mode_map.get(mode_str, 3)
+                # 获取当前设备状态，传给 ac_on_with_mode 以继承温度/风速
+                current_state = self.coordinator.get_device_state(self._device_id)
                 payload = dc.ac_on_with_mode(self._device_id, uid, mode_val,
-                                             username=self.coordinator.username)
-                _LOGGER.debug("[AC] 发开机+模式: mode_val=%d, payload=%s", mode_val, payload)
+                                             username=self.coordinator.username,
+                                             current_state=current_state)
+                _LOGGER.debug("[AC] 发开机+模式: mode_val=%d", mode_val)
                 await self._send_ac(payload)
             
             await self.coordinator.async_request_refresh()
@@ -159,8 +160,10 @@ async def async_setup_entry(
             temp = kwargs.get("temperature")
             if temp is None:
                 return
+            current_state = self.coordinator.get_device_state(self._device_id)
             payload = dc.ac_set_temp(self._device_id, self._device.get("uid", ""),
-                                     int(temp), username=self.coordinator.username)
+                                     int(temp), username=self.coordinator.username,
+                                     current_state=current_state)
             _LOGGER.debug("[AC] 发温度: temp=%d", int(temp))
             await self._send_ac(payload)
             await self.coordinator.async_request_refresh()
@@ -168,8 +171,10 @@ async def async_setup_entry(
         async def async_set_fan_mode(self, fan_mode: str):
             speed_map = {"low": 1, "medium": 2, "high": 3}
             v3 = speed_map.get(fan_mode.lower(), 1)
+            current_state = self.coordinator.get_device_state(self._device_id)
             payload = dc.ac_wind(self._device_id, self._device.get("uid", ""),
-                                 v3, username=self.coordinator.username)
+                                 v3, username=self.coordinator.username,
+                                 current_state=current_state)
             _LOGGER.debug("[AC] 发风速: speed=%d", v3)
             await self._send_ac(payload)
             await self.coordinator.async_request_refresh()

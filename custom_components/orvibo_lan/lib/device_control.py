@@ -351,15 +351,32 @@ def ac_off(device_id: str, uid: str, username: str = "") -> dict:
 
 
 def ac_on_with_mode(device_id: str, uid: str, mode: int,
-                    username: str = "") -> dict:
-    """开空调 + 切模式。对齐 App 格式：value3=1, value4 带目标温度。"""
+                    username: str = "", current_state: dict = None) -> dict:
+    """开空调 + 切模式。App 用 order='on' 开机，用 order='mode setting' 切换模式。
+
+    从关机状态开机时用 order='on'（App 实测）。
+    运行中切模式用 order='mode setting'（已有逻辑保留）。
+    传入 current_state 可继承当前温度和风速。
+    """
+    temp = 2500  # 默认 25°C
+    fan = 1       # 默认低风
+    if current_state:
+        v3 = current_state.get("value3", 0)
+        if v3 and 1 <= int(v3) <= 3:
+            fan = int(v3)
+        v4 = current_state.get("value4", 0)
+        if v4:
+            hi = int(v4) >> 16
+            if hi > 0:
+                temp = hi
+
     payload = _ac_base(device_id, uid, username)
     payload.update({
-        "order": "mode setting",
+        "order": "on",    # App 用 "on" 开机，不是 "mode setting"
         "value1": 0,
         "value2": mode,
-        "value3": 1,        # App 发的默认风速
-        "value4": 2500 << 16,  # 默认 25.0℃（高16位 = 温度×100）
+        "value3": fan,
+        "value4": temp << 16,
     })
     return _to_lan(payload)
 
@@ -388,25 +405,47 @@ def ac_mode(device_id: str, uid: str, mode: int,
 
 
 def ac_set_temp(device_id: str, uid: str, temp: int,
-                username: str = "") -> dict:
-    """空调温度。"""
+                username: str = "", current_state: dict = None) -> dict:
+    """空调温度。App 带 value2=当前模式, value3=当前风速。"""
+    mode = 3   # 默认制冷
+    fan = 1    # 默认低风
+    if current_state:
+        v2 = current_state.get("value2", 0)
+        if v2:
+            mode = int(v2)
+        v3 = current_state.get("value3", 0)
+        if v3 and 1 <= int(v3) <= 3:
+            fan = int(v3)
+
     payload = _ac_base(device_id, uid, username)
     payload.update({
         "order": "temperature setting",
-        "value1": 0, "value2": 0, "value3": 0,
+        "value1": 0, "value2": mode, "value3": fan,
         "value4": (temp * 100) << 16,
     })
     return _to_lan(payload)
 
 
 def ac_wind(device_id: str, uid: str, speed: int,
-            username: str = "") -> dict:
-    """空调风速。"""
+            username: str = "", current_state: dict = None) -> dict:
+    """空调风速。App 带 value2=当前模式, value4=当前温度。"""
+    mode = 3   # 默认制冷
+    temp = 2500  # 默认25°C
+    if current_state:
+        v2 = current_state.get("value2", 0)
+        if v2:
+            mode = int(v2)
+        v4 = current_state.get("value4", 0)
+        if v4:
+            hi = int(v4) >> 16
+            if hi > 0:
+                temp = hi
+
     payload = _ac_base(device_id, uid, username)
     payload.update({
         "order": "wind setting",
-        "value1": 0, "value2": 0,
-        "value3": speed, "value4": 0,
+        "value1": 0, "value2": mode,
+        "value3": speed, "value4": temp << 16,
     })
     return _to_lan(payload)
 
