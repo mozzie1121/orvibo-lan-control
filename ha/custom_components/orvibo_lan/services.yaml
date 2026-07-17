@@ -1,0 +1,38 @@
+clothes_horse_control:
+  name: 晾衣架控制
+  description: 控制 Orvibo 智能晾衣架
+  target:
+    entity:
+      integration: orvibo_lan
+  fields:
+    ctrl_field:
+      name: 控制字段
+      description: lightingCtrl/sterilizingCtrl/windDryingCtrl/heatDryingCtrl/mainSwitchCtrl/motorCtrl
+      required: true
+      example: motorCtrl
+      selector:
+        select:
+          options:
+            - lightingCtrl
+            - sterilizingCtrl
+            - windDryingCtrl
+            - heatDryingCtrl
+            - mainSwitchCtrl
+            - motorCtrl
+    ctrl_value:
+      name: 控制值
+      description: on/off/up/down/stop
+      required: true
+      example: on
+      selector:
+        select:
+          options:
+            - on
+            - off
+            - up
+            - down
+            - stop
+
+refresh_devices:
+  name: 刷新设备
+  description: 手动从云端刷新设备列表和状态

@@ -1,0 +1,28 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "ORVIBO LAN Control",
+        "description": "Enter your Orvibo account (phone number)",
+        "data": {
+          "username": "Phone Number",
+          "password": "Password"
+        }
+      },
+      "select_family": {
+        "title": "Select Family",
+        "description": "Please select a family to control",
+        "data": {
+          "family_id": "Family"
+        }
+      }
+    },
+    "error": {
+      "auth_failed": "Login failed, check your credentials",
+      "empty_username_or_password": "Phone number and password cannot be empty"
+    },
+    "abort": {
+      "already_configured": "This account is already configured"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Orvibo 局域网控制",
+        "description": "输入您的 Orvibo 账号（手机号）",
+        "data": {
+          "username": "手机号",
+          "password": "密码"
+        }
+      },
+      "select_family": {
+        "title": "选择家庭",
+        "description": "请选择要控制的家庭",
+        "data": {
+          "family_id": "家庭"
+        }
+      }
+    },
+    "error": {
+      "auth_failed": "登录失败，请检查账号密码",
+      "empty_username_or_password": "手机号和密码不能为空"
+    },
+    "abort": {
+      "already_configured": "该账号已配置"
+    }
+  }
+}
