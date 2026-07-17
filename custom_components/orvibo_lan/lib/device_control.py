@@ -13,7 +13,7 @@ from typing import Optional
 
 _LOGGER = logging.getLogger(__name__)
 
-SOFTWARE_VER = "5.1.3.309"
+SOFTWARE_VER = "5.1.5.302"
 CMD_HELLO = 1
 CMD_LOGIN = 3
 CMD_CONTROL = 15
@@ -34,15 +34,31 @@ def _to_lan(payload: dict) -> dict:
     """将 SSL 格式 payload 转为 LAN 格式。"""
     if "groupId" in payload:
         payload.pop("groupId")
-    if "groupid" in payload:
-        payload.pop("groupid")
     if "source" not in payload:
         payload["source"] = "ZhiJia365"
-    # LAN 不用的字段
-    payload.pop("qualityOfService", None)
-    payload.pop("defaultResponse", None)
-    payload.pop("propertyResponse", None)
+    # 注意：不再暴力删除 groupid/qualityOfService/defaultResponse/propertyResponse
+    # 智家365 App 实际都会传这些字段。groupid 对 Zapier/Zigbee 设备有副作用，
+    # 但 AC（type=36）不走 Zigbee，留着不影响。
     return payload
+
+
+# ==================== 通用 base payload ====================
+
+def _base(device_id: str, uid: str, username: str = "") -> dict:
+    """所有控制命令共用的基础字段。"""
+    return {
+        "uid": uid,
+        "userName": username,
+        "deviceId": device_id,
+        "delayTime": 0,
+        "cmd": CMD_CONTROL,
+        "serial": _serial(),
+        "clientType": 1,
+        "uniSerial": _uni_serial(),
+        "serverRecord": False,
+        "ver": SOFTWARE_VER,
+        "debugInfo": "Android_ZhiJia365_34_5.1.5.302",
+    }
 
 
 # ==================== 灯控制 ====================
@@ -301,26 +317,97 @@ def ventilation_control(device_id: str, uid: str, value1: int,
     return _to_lan(payload)
 
 
-# ==================== 空调 ====================
+# ==================== 空调控制 (type=36) ====================
 
-def ac_control(device_id: str, uid: str,
-               value1: int = None, value2: int = None,
-               value3: int = None, value4: int = None,
-               username: str = "") -> dict:
-    """空调控制（set property 格式）。"""
-    serial = _serial()
-    uniSerial = _uni_serial()
-    payload = {
-        "uid": uid, "userName": username,
-        "deviceId": device_id, "groupId": "",
-        "order": "set property",
-        "value1": value1 or 0, "value2": value2 or 0,
-        "value3": value3 or 0, "value4": value4 or 0,
-        "delayTime": 0, "cmd": CMD_CONTROL,
-        "serial": serial, "clientType": 1,
-        "uniSerial": uniSerial, "serverRecord": False,
+def _ac_base(device_id: str, uid: str, username: str = "") -> dict:
+    """空调控制命令基础字段，对齐智家365 App 的格式。"""
+    return {
+        "uid": uid,
+        "userName": username,
+        "deviceId": device_id,
+        "groupId": "",
+        "delayTime": 0,
+        "qualityOfService": 1,
+        "defaultResponse": 1,
+        "propertyResponse": 0,
+        "cmd": CMD_CONTROL,
+        "serial": _serial(),
+        "clientType": 1,
+        "uniSerial": _uni_serial(),
+        "serverRecord": False,
         "ver": SOFTWARE_VER,
+        "debugInfo": "Android_ZhiJia365_34_5.1.5.302",
     }
+
+
+def ac_off(device_id: str, uid: str, username: str = "") -> dict:
+    """关空调。"""
+    payload = _ac_base(device_id, uid, username)
+    payload.update({
+        "order": "off", "value1": 1, "value2": 0,
+        "value3": 0, "value4": 0,
+    })
+    return _to_lan(payload)
+
+
+def ac_on_with_mode(device_id: str, uid: str, mode: int,
+                    username: str = "") -> dict:
+    """开空调 + 切模式。对齐 App 格式：value3=1, value4 带目标温度。"""
+    payload = _ac_base(device_id, uid, username)
+    payload.update({
+        "order": "mode setting",
+        "value1": 0,
+        "value2": mode,
+        "value3": 1,        # App 发的默认风速
+        "value4": 2500 << 16,  # 默认 25.0℃（高16位 = 温度×100）
+    })
+    return _to_lan(payload)
+
+
+def ac_power(device_id: str, uid: str, on: bool,
+             username: str = "") -> dict:
+    """空调电源。on=True → mode setting, on=False → off"""
+    if on:
+        return ac_on_with_mode(device_id, uid, 3, username=username)
+    else:
+        return ac_off(device_id, uid, username=username)
+
+
+def ac_mode(device_id: str, uid: str, mode: int,
+            username: str = "") -> dict:
+    """空调模式。"""
+    payload = _ac_base(device_id, uid, username)
+    payload.update({
+        "order": "mode setting",
+        "value1": 0,
+        "value2": mode,
+        "value3": 1,
+        "value4": 2500 << 16,
+    })
+    return _to_lan(payload)
+
+
+def ac_set_temp(device_id: str, uid: str, temp: int,
+                username: str = "") -> dict:
+    """空调温度。"""
+    payload = _ac_base(device_id, uid, username)
+    payload.update({
+        "order": "temperature setting",
+        "value1": 0, "value2": 0, "value3": 0,
+        "value4": (temp * 100) << 16,
+    })
+    return _to_lan(payload)
+
+
+def ac_wind(device_id: str, uid: str, speed: int,
+            username: str = "") -> dict:
+    """空调风速。"""
+    payload = _ac_base(device_id, uid, username)
+    payload.update({
+        "order": "wind setting",
+        "value1": 0, "value2": 0,
+        "value3": speed, "value4": 0,
+    })
     return _to_lan(payload)
 
 
@@ -372,119 +459,6 @@ def curtain_control(device_id: str, uid: str, cmd, username: str = "") -> dict:
     return _to_lan(payload)
 
 
-# ==================== 空调控制 (type=36, 实测通过的格式) ====================
-# 实测结果:
-#   关:      order="off"  value1=1              (通用关格式)
-#   开+模式:  order="mode setting"  value1=0  value2=模式码
-#   切模式:  order="mode setting"  value2=3/4/7/2
-#   设温度:  order="temperature setting"  value4=(temp*100)<<16
-#   设风速:  order="wind setting"  value3=1/2/3
-# ❌ set property + properties.onoff — 无效
-# ❌ ac control + subOrder — 无效
-
-def ac_off(device_id: str, uid: str, username: str = "") -> dict:
-    """关空调。实测: order='off', value1=1"""
-    serial = _serial()
-    uniSerial = _uni_serial()
-    payload = {
-        "uid": uid, "userName": username,
-        "deviceId": device_id,
-        "order": "off", "value1": 1, "value2": 0,
-        "value3": 0, "value4": 0,
-        "delayTime": 0, "cmd": CMD_CONTROL,
-        "serial": serial, "clientType": 1,
-        "uniSerial": uniSerial, "serverRecord": False,
-        "ver": SOFTWARE_VER,
-    }
-    return _to_lan(payload)
-
-
-def ac_on_with_mode(device_id: str, uid: str, mode: int,
-                    username: str = "") -> dict:
-    """开空调 + 切模式。实测: order='mode setting', value1=0, value2=mode"""
-    serial = _serial()
-    uniSerial = _uni_serial()
-    payload = {
-        "uid": uid, "userName": username,
-        "deviceId": device_id,
-        "order": "mode setting",
-        "value1": 0, "value2": mode,
-        "value3": 0, "value4": 0,
-        "delayTime": 0, "cmd": CMD_CONTROL,
-        "serial": serial, "clientType": 1,
-        "uniSerial": uniSerial, "serverRecord": False,
-        "ver": SOFTWARE_VER,
-    }
-    return _to_lan(payload)
-
-
-# 保留原有的 ac_* 函数但标记为 legacy（背后用实测通过的格式）
-def ac_power(device_id: str, uid: str, on: bool,
-             username: str = "") -> dict:
-    """空调电源。on=True → mode setting+v1=0(开), on=False → off+v1=1(关)"""
-    if on:
-        return ac_on_with_mode(device_id, uid, 3, username=username)
-    else:
-        return ac_off(device_id, uid, username=username)
-
-
-def ac_mode(device_id: str, uid: str, mode: int,
-            username: str = "") -> dict:
-    """空调模式。实测: order='mode setting', value2=模式码"""
-    serial = _serial()
-    uniSerial = _uni_serial()
-    payload = {
-        "uid": uid, "userName": username,
-        "deviceId": device_id,
-        "order": "mode setting",
-        "value1": 0, "value2": mode,
-        "value3": 0, "value4": 0,
-        "delayTime": 0, "cmd": CMD_CONTROL,
-        "serial": serial, "clientType": 1,
-        "uniSerial": uniSerial, "serverRecord": False,
-        "ver": SOFTWARE_VER,
-    }
-    return _to_lan(payload)
-
-
-def ac_set_temp(device_id: str, uid: str, temp: int,
-                username: str = "") -> dict:
-    """空调温度。实测: order='temperature setting', value4=(temp*100)<<16"""
-    serial = _serial()
-    uniSerial = _uni_serial()
-    payload = {
-        "uid": uid, "userName": username,
-        "deviceId": device_id,
-        "order": "temperature setting",
-        "value1": 0, "value2": 0, "value3": 0,
-        "value4": (temp * 100) << 16,
-        "delayTime": 0, "cmd": CMD_CONTROL,
-        "serial": serial, "clientType": 1,
-        "uniSerial": uniSerial, "serverRecord": False,
-        "ver": SOFTWARE_VER,
-    }
-    return _to_lan(payload)
-
-
-def ac_wind(device_id: str, uid: str, speed: int,
-            username: str = "") -> dict:
-    """空调风速。实测: order='wind setting', value3=1/2/3"""
-    serial = _serial()
-    uniSerial = _uni_serial()
-    payload = {
-        "uid": uid, "userName": username,
-        "deviceId": device_id,
-        "order": "wind setting",
-        "value1": 0, "value2": 0,
-        "value3": speed, "value4": 0,
-        "delayTime": 0, "cmd": CMD_CONTROL,
-        "serial": serial, "clientType": 1,
-        "uniSerial": uniSerial, "serverRecord": False,
-        "ver": SOFTWARE_VER,
-    }
-    return _to_lan(payload)
-
-
 # ==================== 心跳包 ====================
 
 def heartbeat() -> dict:
@@ -498,31 +472,3 @@ def heartbeat() -> dict:
         "ver": SOFTWARE_VER,
     }
     return payload
-
-
-# ==================== 设备类型信息 ====================
-
-DEVICE_TYPE_NAMES = {
-    1: "简版灯", 34: "窗帘", 36: "空调",
-    38: "调光调色灯", 52: "晾衣架", 81: "AirMaster",
-    102: "灯", 114: "MixPad主机", 501: "单色灯",
-    502: "可调光灯", 503: "色温灯带", 516: "新风",
-    2: "开关", 554: "开关", 511: "四路底壳", 518: "扩展开关",
-    0: "Zigbee调光灯",
-    25: "燃气传感器", 26: "人体传感器", 27: "烟雾传感器",
-    46: "门窗传感器", 54: "水浸传感器", 56: "紧急按钮",
-    135: "智能开关", 136: "智能开关", 137: "智能开关", 143: "智能开关",
-    150: "智能遥控", 300: "温湿度传感器",
-}
-
-CONTROLLABLE_TYPES = {1, 34, 36, 38, 52, 81, 102,
-                      501, 502, 503, 516, 0, 2, 554,
-                      135, 136, 137, 143, 150}
-
-
-def get_device_type_name(dt: int) -> str:
-    return DEVICE_TYPE_NAMES.get(dt, f"未知({dt})")
-
-
-def is_set_property(dt: int) -> bool:
-    return dt in {501, 135, 136, 137, 143, 2, 554, 502, 516, 36}
