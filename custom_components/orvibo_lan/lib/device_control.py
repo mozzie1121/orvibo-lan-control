@@ -32,8 +32,8 @@ def _uni_serial():
 
 def _to_lan(payload: dict) -> dict:
     """将 SSL 格式 payload 转为 LAN 格式。"""
-    if "groupId" in payload:
-        payload.pop("groupId")
+    # 保留 groupId（App 会带 "groupId": ""），不再删除
+    # AC（type=36）通过网关控制，需要 groupId 字段
     if "source" not in payload:
         payload["source"] = "ZhiJia365"
     # 注意：不再暴力删除 groupid/qualityOfService/defaultResponse/propertyResponse
