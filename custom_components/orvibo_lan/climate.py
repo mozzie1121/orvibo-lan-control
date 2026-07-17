@@ -143,17 +143,17 @@ async def async_setup_entry(
                 mode_val = mode_map.get(mode_str, 3)
                 payload = dc.ac_on_with_mode(self._device_id, uid, mode_val,
                                              username=self.coordinator.username)
-                _LOGGER.debug("[AC] 发开机+模式: mode_val=%d", mode_val)
+                _LOGGER.debug("[AC] 发开机+模式: mode_val=%d, payload=%s", mode_val, payload)
                 await self._send_ac(payload)
             
             await self.coordinator.async_request_refresh()
 
         async def _send_ac(self, payload):
-            \"\"\"发空调命令，通过 send_control 读取网关回复。\"\"\"
-            _LOGGER.debug(\"[AC] 发命令: order=%s, v1=%s, v2=%s",
-                          payload.get(\"order\"), payload.get(\"value1\"), payload.get(\"value2\"))
+            """发空调命令，通过 send_control 读取网关回复。"""
+            _LOGGER.debug("[AC] 发命令: order=%s, v1=%s, v2=%s",
+                          payload.get("order"), payload.get("value1"), payload.get("value2"))
             ok = await self.coordinator.async_control_device(self._device_id, payload)
-            _LOGGER.debug(\"[AC] 结果: %s", \"成功\" if ok else \"失败\")
+            _LOGGER.debug("[AC] 结果: %s", "成功" if ok else "失败")
 
         async def async_set_temperature(self, **kwargs):
             temp = kwargs.get("temperature")
