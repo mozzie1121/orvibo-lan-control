@@ -18,27 +18,23 @@
 
 ```
 orvibo-lan-control/
-├── ha/                               # 🤖 Home Assistant 集成
-│   └── custom_components/orvibo_lan/ # HACS 可安装的自定义组件
-│       ├── __init__.py               # 插件入口 / 配置加载
-│       ├── config_flow.py            # UI 配置流
-│       ├── coordinator.py            # 轮询协调器 + 网关管理
-│       ├── climate.py                # 空调平台
-│       ├── light.py                  # 灯光平台
-│       ├── cover.py                  # 窗帘平台
-│       ├── fan.py                    # 风扇平台
-│       ├── lib/                      # 核心协议库
-│       │   ├── packet.py             # 封包/解包（AES-ECB）
-│       │   ├── lan_controller.py     # TCP 连接管理
-│       │   ├── device_control.py     # 设备控制 payload
-│       │   └── https_client.py       # 云端 API 客户端
-│       └── translations/             # 多语言翻译
-├── lib/                              # 📚 核心协议库（独立版）
-├── .github/workflows/hacs.yml        # HACS 自动验证
-├── .env.example
-├── .gitignore
+├── custom_components/orvibo_lan/   # 🤖 Home Assistant 自定义组件
+│   ├── __init__.py                 # 插件入口 / 配置加载
+│   ├── config_flow.py              # UI 配置流
+│   ├── coordinator.py              # 轮询协调器 + 网关管理
+│   ├── climate.py                  # 空调平台
+│   ├── light.py                    # 灯光平台
+│   ├── cover.py                    # 窗帘平台
+│   ├── fan.py                      # 风扇平台
+│   ├── lib/                        # 核心协议库
+│   │   ├── packet.py               # 封包/解包（AES-ECB）
+│   │   ├── lan_controller.py       # TCP 连接管理
+│   │   ├── device_control.py       # 设备控制 payload
+│   │   └── https_client.py         # 云端 API 客户端
+│   └── translations/               # 多语言翻译
+├── .github/workflows/release.yml   # 自动发布
+├── hacs.json
 ├── LICENSE
-├── requirements.txt
 └── README.md
 ```
 
@@ -78,10 +74,10 @@ orvibo-lan-control/
 
 ### 方式二：手动安装
 
-将 `ha/custom_components/orvibo_lan/` 复制到 Home Assistant 的 `custom_components/` 目录：
+将 `custom_components/orvibo_lan/` 复制到 Home Assistant 的 `custom_components/` 目录：
 
 ```bash
-cp -r ha/custom_components/orvibo_lan /path/to/config/custom_components/
+cp -r custom_components/orvibo_lan /path/to/config/custom_components/
 ```
 
 重启 HA 后添加集成。
@@ -100,7 +96,7 @@ cp -r ha/custom_components/orvibo_lan /path/to/config/custom_components/
 
 | 类型 | 名称 | 控制方式 | 状态 |
 |:----:|:-----|:---------|:----:|
-| 36 | 风机盘管（空调） | `off` / `mode setting` / `temperature setting` / `wind setting` | ✅ 实测通过 |
+| 36 | 风机盘管（空调） | `on` / `off` / `mode setting` / `temperature setting` / `wind setting` | ✅ 实测通过 |
 | 34 | Zigbee 窗帘 | `open` / `close` / `stop` | ✅ |
 | 38 / 102 | 灯 | `on` / `off` | ✅ |
 | 501 | 平板灯/吸顶灯 | `set property` | ✅ |
@@ -119,34 +115,77 @@ cp -r ha/custom_components/orvibo_lan /path/to/config/custom_components/
 
 ### 空调控制（type=36）
 
-实测通过的格式：
+通过智家365 App Frida Hook 逆向分析，各操作使用的命令格式如下：
 
 | 操作 | order | value1 | value2 | value3 | value4 |
 |:----|:------|:------:|:------:|:------:|:------:|
-| 关机 | `off` | 1 | - | - | - |
-| 开机+模式 | `mode setting` | 0 | 3制冷/4制热/7送风/2除湿 | - | - |
-| 设温度 | `temperature setting` | - | - | - | (temp×100)<<16 |
-| 设风速 | `wind setting` | - | - | 1低/2中/3高 | - |
+| 关机 | `off` | 1 | 当前模式 | 当前风速 | 当前温度<<16 |
+| 开机 | `on` | 0 | 模式码 | 风速码 | (温度×100)<<16 |
+| 切换模式 | `mode setting` | 0 | 2除湿/3制冷/4制热/7送风 | - | 当前温度<<16 |
+| 设温度 | `temperature setting` | 0 | 当前模式 | 当前风速 | (目标温度×100)<<16 |
+| 设风速 | `wind setting` | 0 | 当前模式 | 1低/2中/3高 | 当前温度<<16 |
+
+> 所有控制命令都保持 `groupId=""`、`qualityOfService=1`、`defaultResponse=1`、`propertyResponse=0`，与 App 行为一致。
+
+**模式码对照：** `2=除湿` `3=制冷` `4=制热` `7=送风`
+
+**温度编码：** `value4` 高16位 = 目标温度×100（如 26℃ → `0x0A28` = 2600）
+
+### 灯控制
+
+| 类型 | 开 | 关 | 调亮度 | 调色温 |
+|:----|:---|:---|:------|:------|
+| 38（调光调色灯） | `order=on` | `order=off` | `order=move to level` | `order=fast color temperature` |
+| 102 / 通用 | `order=on, value1=0` | `order=off, value1=1` | `order=on, value2=亮度` | - |
+| 501 | `set property onoff=on` | `set property onoff=off` | - | - |
+| 502 | `set property onoff=on` | `set property onoff=off` | `set property brightness.percent` | - |
+| 503 | `set property onoff=on` | `set property onoff=off` | `set property brightness.percent` | `set property colorTemp.value` |
+
+### 窗帘控制（type=34）
+
+- **开：** `order="open"`
+- **关：** `order="close"`
+- **停止：** `order="stop"`
+- **设定位置：** 传 position=0~100，≥50 发 `"on"`，<50 发 `"off"`
 
 ## 开发
-
-```bash
-pip install -r requirements.txt
-cp .env.example .env   # 填写手机号+密码
-```
 
 ### UDP 发现网关
 
 ```python
 from lib.packet import *
 from lib.lan_controller import *
-# 见 ha/custom_components/orvibo_lan/coordinator.py 的 _udp_discover()
+# 见 coordinator.py 的 _udp_discover()
 ```
+
+### 协议分析
+
+本项目通过 **Frida Hook 智家365 App** 的 `JSONObject.toString()` 方法，实时抓取 App 发送的原始控制包，确定正确字段格式。关键发现：
+
+- AC 控制 **不能用** `order="set property"` — 实测无效
+- 必须传 `groupId=""`（空字符串），删除后网关不转发给子设备
+- `value2`/`value3`/`value4` 应保留当前设备的模式/风速/温度状态（App 始终携带）
+
+## 版本历史
+
+### v0.2.0（2026-07-17）
+- 修复空调开机（改用 `order="on"`）
+- 修复空调风速控制（补全 `value2` 当前模式、`value4` 当前温度）
+- 修复温度设定（补全 `value2` 当前模式、`value3` 当前风速）
+- 保留 `groupId` 字段（不再被 `_to_lan` 删除）
+- 对齐智家365 App 抓包格式
+
+### v0.1.0（2026-07-17）
+- 初始版本
+- 基础设备控制：灯、窗帘、风扇
+- 空调基础控制（`order="off"` / `"mode setting"` / `"temperature setting"` / `"wind setting"`）
+- UDP 自动发现多网关
+- 心跳保活
 
 ## 致谢
 
 - [orvibohomebridge](https://github.com/yinjimmy/orvibohomebridge) — 在线控制版实现参考
-- 智家365 APK 反编译 — 协议字段确认
+- 智家365 APK 反编译 + Frida Hook — 协议字段确认
 
 ## License
 
