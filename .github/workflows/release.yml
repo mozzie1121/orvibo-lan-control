@@ -21,7 +21,7 @@ jobs:
         run: |
           python3 -c "
           import json
-          with open('ha/custom_components/orvibo_lan/manifest.json') as f:
+          with open('custom_components/orvibo_lan/manifest.json') as f:
             m = json.load(f)
           assert 'version' in m, '缺少 version'
           assert 'domain' in m, '缺少 domain'
@@ -30,7 +30,7 @@ jobs:
 
       - name: 校验 Python 语法
         run: |
-          find ha/custom_components/orvibo_lan -name '*.py' -exec python3 -m py_compile {} \;
+          find custom_components/orvibo_lan -name '*.py' -exec python3 -m py_compile {} \;
           echo "所有 Python 文件语法检查通过"
 
   build:
@@ -45,7 +45,7 @@ jobs:
           TAG=${GITHUB_REF_NAME#v}
           mkdir -p dist
           # 只打包 HA 组件目录 + 顶级文件
-          cp -r ha/custom_components dist/
+          cp -r custom_components dist/
           cp hacs.json README.md dist/ 2>/dev/null || true
           cd dist
           zip -r "../orvibo_lan-${TAG}.zip" ./*
