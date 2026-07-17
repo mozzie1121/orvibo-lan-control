@@ -132,11 +132,8 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 if ok:
                     self._gateway_connections[uid] = conn
                     # 启动状态监听循环，捕获 cmd=42 推送
-                    conn.start_listen_loop(
-                        lambda p: self.hass.call_soon_threadsafe(
-                            self._on_status_update, p
-                        )
-                    )
+                    # 监听循环在同个事件循环中运行，直接同步回调
+                    conn.start_listen_loop(self._on_status_update)
                     _LOGGER.info(f"网关 {ip} (uid={uid[:12]}...) 连接成功，状态监听已启动")
                 else:
                     _LOGGER.warning(f"网关 {ip} (uid={uid[:12]}...) 连接失败")
