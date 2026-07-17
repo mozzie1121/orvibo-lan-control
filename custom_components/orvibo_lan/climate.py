@@ -149,11 +149,11 @@ async def async_setup_entry(
             await self.coordinator.async_request_refresh()
 
         async def _send_ac(self, payload):
-            """发空调命令，不等待回复。"""
-            _LOGGER.debug("[AC] 发命令: order=%s, v1=%s, v2=%s",
-                          payload.get("order"), payload.get("value1"), payload.get("value2"))
-            ok = await self.coordinator.async_send_raw(self._device_id, payload)
-            _LOGGER.debug("[AC] 结果: %s", "成功" if ok else "失败")
+            \"\"\"发空调命令，通过 send_control 读取网关回复。\"\"\"
+            _LOGGER.debug(\"[AC] 发命令: order=%s, v1=%s, v2=%s",
+                          payload.get(\"order\"), payload.get(\"value1\"), payload.get(\"value2\"))
+            ok = await self.coordinator.async_control_device(self._device_id, payload)
+            _LOGGER.debug(\"[AC] 结果: %s", \"成功\" if ok else \"失败\")
 
         async def async_set_temperature(self, **kwargs):
             temp = kwargs.get("temperature")
