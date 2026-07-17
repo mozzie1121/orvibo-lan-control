@@ -37,6 +37,8 @@ class LanConnection:
         self.session_key: Optional[bytes] = None
         self._keys: Dict[bytes, bytes] = {ID_UNSET: DEFAULT_KEY.encode()}
         self._heartbeat_task: Optional[asyncio.Task] = None
+        self._listen_task: Optional[asyncio.Task] = None
+        self._listen_callback: Optional[callable] = None
         self._username: Optional[str] = None
 
     async def connect(self, timeout: float = 5.0) -> bool:
@@ -57,6 +59,12 @@ class LanConnection:
             self._heartbeat_task.cancel()
             try:
                 await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+        if self._listen_task and not self._listen_task.done():
+            self._listen_task.cancel()
+            try:
+                await self._listen_task
             except asyncio.CancelledError:
                 pass
         if self.writer:
@@ -268,3 +276,59 @@ class LanConnection:
         except Exception as e:
             _LOGGER.debug(f"读包异常: {e}")
             return None
+
+    def start_listen_loop(self, callback):
+        """启动后台监听循环，捕获 TCP 推送的 cmd=42 状态更新。
+
+        Args:
+            callback: 调用签名 callback(payload)，
+                      payload 是 cmd=42 的解析后 dict。
+                      格式与 readtable 的 deviceStatus 一致：
+                      - 旧协议: value1, value2, value3, value4
+                      - ThingModel: properties.onoff, properties.brightness 等
+
+        监听循环独立于 send_control，不会干扰控制命令的回复读取。
+        每个连接只能启动一个监听循环。
+        """
+        if self._listen_task and not self._listen_task.done():
+            _LOGGER.warning("监听循环已在运行")
+            return
+
+        self._listen_callback = callback
+        self._listen_task = asyncio.create_task(
+            self._listen_loop(), name=f"listen-{self.host}"
+        )
+        _LOGGER.debug(f"TCP 监听循环已启动 on {self.host}")
+
+    def stop_listen_loop(self):
+        """停止后台监听循环。"""
+        if self._listen_task and not self._listen_task.done():
+            self._listen_task.cancel()
+            self._listen_task = None
+            _LOGGER.debug(f"TCP 监听循环已停止 on {self.host}")
+
+    async def _listen_loop(self):
+        """后台循环读取 TCP 数据，过滤 cmd=42 并回调。"""
+        while self.connected:
+            raw = await self._read_packet(timeout=5.0)
+            if raw is None:
+                if not self.connected:
+                    break
+                continue
+
+            result = parse_packet(raw, self._keys)
+            if result is None:
+                continue
+
+            cmd = result.get("cmd")
+            if cmd == CMD_STATE_UPDATE:
+                callback = self._listen_callback
+                if callback:
+                    try:
+                        callback(result)
+                    except Exception as e:
+                        _LOGGER.warning(f"回调异常: {e}")
+            elif cmd not in (CMD_HEARTBEAT, CMD_HELLO, CMD_LOGIN):
+                pass  # 忽略其他包
+
+        _LOGGER.debug(f"监听循环结束 on {self.host}")

@@ -131,7 +131,13 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 ok = await conn.connect_and_login(self.username, self.password)
                 if ok:
                     self._gateway_connections[uid] = conn
-                    _LOGGER.info(f"网关 {ip} (uid={uid[:12]}...) 连接成功")
+                    # 启动状态监听循环，捕获 cmd=42 推送
+                    conn.start_listen_loop(
+                        lambda p: self.hass.call_soon_threadsafe(
+                            self._on_status_update, p
+                        )
+                    )
+                    _LOGGER.info(f"网关 {ip} (uid={uid[:12]}...) 连接成功，状态监听已启动")
                 else:
                     _LOGGER.warning(f"网关 {ip} (uid={uid[:12]}...) 连接失败")
             except Exception as e:
@@ -214,6 +220,37 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         except Exception as e:
             _LOGGER.warning(f"UDP 发现异常: {e}")
             return {}
+
+    def _on_status_update(self, payload: dict):
+        """TCP 监听循环回调：收到 cmd=42 状态推送，更新本地状态缓存。
+
+        在 hass 事件循环线程中执行（通过 call_soon_threadsafe 调用）。
+        cmd=42 的格式与 readtable 云端返回的 deviceStatus 完全一致：
+        - 旧协议: value1, value2, value3, value4
+        - ThingModel: properties.onoff, properties.brightness 等
+        区别：cmd=42 没有 online 字段，但有 statusType/subDeviceType。
+        """
+        did = payload.get("deviceId")
+        if not did:
+            return
+
+        old_state = self.device_states.get(did, {})
+
+        # 合并更新（保留 online 等云端字段，覆盖 value/properties）
+        new_state = dict(old_state)
+        for key in ("value1", "value2", "value3", "value4",
+                     "properties", "statusType", "subDeviceType",
+                     "alarmType", "online"):
+            if key in payload:
+                new_state[key] = payload[key]
+        new_state["updateTime"] = payload.get("updateTime",
+                                               old_state.get("updateTime", ""))
+
+        self.device_states[did] = new_state
+        _LOGGER.debug(f"cmd=42 状态更新: {did[:16]}... {payload.get('properties', payload.get('value1', '?'))}")
+
+        # 通知 HA 状态变更（触发各平台的 _handle_coordinator_update）
+        self.async_set_updated_data(self.device_states)
 
     async def async_send_raw(self, device_id: str, payload: dict) -> bool:
         """通过 LAN 发送命令（不等待回复，适合空调等不回复的设备）。"""
