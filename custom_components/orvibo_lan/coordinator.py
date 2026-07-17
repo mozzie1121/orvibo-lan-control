@@ -258,6 +258,7 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                                                old_state.get("updateTime", ""))
 
         self.device_states[did] = new_state
+        _LOGGER.warning(f"cmd=42 窗帘原始: {did[:16]}.. value1={payload.get('value1')}, value2={payload.get('value2')}, value3={payload.get('value3')}, value4={payload.get('value4')}")
         _LOGGER.debug(f"cmd=42 更新: {did[:16]}.. props={payload.get('properties', payload.get('value1','?'))}")
 
         # 通知 HA 状态变更（触发各平台的 _handle_coordinator_update）
