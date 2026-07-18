@@ -95,11 +95,6 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             devices, statuses, gateways, gateway_ips, _ = \
                 await self.https_client.fetch_devices()
 
-            # 调试：看看第一个设备的字段
-            if devices:
-                _LOGGER.warning(f"[调试] 第一个设备字段: {list(devices[0].keys())}")
-                _LOGGER.warning(f"[调试] 第一个设备: {devices[0]}")
-
             # 更新网关IP映射
             self._gateway_ips = gateway_ips
 

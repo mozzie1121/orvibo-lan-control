@@ -216,6 +216,23 @@ class HttpsClient:
         statuses = {s["deviceId"]: s for s in dd.get("deviceStatus", [])}
         gateways = dd.get("gateway", [])
 
+        # 构建 roomId → roomName 映射表（readtable 顶层 room 数组）
+        rooms_data = dd.get("room", [])
+        room_names_map = {}
+        if isinstance(rooms_data, list):
+            for r in rooms_data:
+                rid = r.get("roomId") or r.get("roomID", "")
+                rname = r.get("roomName", "")
+                if rid and rname:
+                    room_names_map[rid] = rname
+
+        # 回填 roomName 到每个 device（优先 device 自身的 roomName，否则查映射表）
+        for d in devices:
+            if not d.get("roomName"):
+                rid = d.get("roomId") or d.get("roomID", "")
+                if rid in room_names_map:
+                    d["roomName"] = room_names_map[rid]
+
         return devices, statuses, gateways
 
     def _build_gateway_ip_map(self, gateways: list, devices: list) -> dict:
