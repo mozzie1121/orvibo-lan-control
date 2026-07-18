@@ -85,6 +85,7 @@ async def async_setup_entry(
             return self._parse_color_temp(st)
 
         def _parse_state(self, st: dict) -> bool:
+            _LOGGER.warning(f"[灯状态] device_type={self._device_type}, st={st}")
             if self._device_type in {501, 502, 503, 135, 136, 137, 143, 2, 554}:
                 props = st.get("properties", {}) or {}
                 onoff = props.get("onoff", {})
