@@ -257,14 +257,33 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             merged = dict(old_lan)
             merged.update(incoming_props)
             self._lan_properties[did] = merged
+            # 限制 _lan_properties 条目数，防止无限增长
+            if len(self._lan_properties) > 200:
+                # 移除最旧的条目（dict 在 3.7+ 保持插入顺序）
+                oldest = next(iter(self._lan_properties))
+                del self._lan_properties[oldest]
             # 也写入 device_states 给旧代码读取，但轮询会覆盖
             new_state["properties"] = self._lan_properties[did]
 
         self.device_states[did] = new_state
         _LOGGER.debug(f"cmd=42 更新: {did[:16]}.. props={payload.get('value1', payload.get('properties', '?'))}")
 
-        # 通知 HA 状态变更（触发各平台的 _handle_coordinator_update）
-        self.async_set_updated_data(self.device_states)
+        # 节流通知：200ms 内多次 cmd=42 合并为一次通知
+        # 避免高频推送挤爆 HA 事件循环
+        if not hasattr(self, '_debounce_timer'):
+            self._debounce_timer = None
+
+        if self._debounce_timer is not None:
+            self._debounce_timer.cancel()
+
+        async def _notify():
+            self._debounce_timer = None
+            try:
+                self.async_set_updated_data(self.device_states)
+            except Exception:
+                pass  # HA 可能已卸载
+
+        self._debounce_timer = self.hass.loop.call_later(0.2, lambda: asyncio.ensure_future(_notify()))
 
     async def async_send_raw(self, device_id: str, payload: dict) -> bool:
         """通过 LAN 发送命令（不等待回复，适合空调等不回复的设备）。"""
