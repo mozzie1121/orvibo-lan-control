@@ -252,6 +252,10 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             new_state["properties"] = self._lan_properties[did]
 
         self.device_states[did] = new_state
+        dt = self.device_types.get(did, 0)
+        st = payload.get("statusType", 0)
+        if dt == 52 or st == 52:
+            _LOGGER.warning(f"[晾衣架 cmd=42] 全量: {payload}")
         _LOGGER.debug(f"cmd=42 更新: {did[:16]}.. props={payload.get('value1', payload.get('properties', '?'))}")
 
         # 通知 HA 状态变更（触发各平台的 _handle_coordinator_update）
