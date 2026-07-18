@@ -208,18 +208,12 @@ class LanConnection:
 
         async def _listen_loop():
             _LOGGER.debug(f"监听循环已启动 {self.host}")
-            empty_reads = 0
             while self.connected:
                 try:
-                    raw = await self._read_packet(timeout=30.0)
+                    raw = await self._read_packet(timeout=60.0)
                     if raw is None:
-                        empty_reads += 1
-                        if empty_reads >= 3:
-                            _LOGGER.debug(f"监听循环 {self.host}: 连续 {empty_reads} 次空读取，退出")
-                            break
-                        await asyncio.sleep(0.1)
+                        # 超时是正常行为——网关可能长时间无状态变化
                         continue
-                    empty_reads = 0
                     result = parse_packet(raw, self._keys)
                     if result is None:
                         continue
