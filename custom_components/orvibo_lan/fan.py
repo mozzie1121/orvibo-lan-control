@@ -42,6 +42,17 @@ async def async_setup_entry(
             )
             self._attr_speed_count = 4  # low/medium/high/auto
 
+            # 绑定到网关设备
+            uid = device.get("uid", "")
+            if uid:
+                self._attr_device_info = {
+                    "identifiers": {(DOMAIN, f"gateway_{uid}")},
+                    "name": f"Orvibo Gateway",
+                    "manufacturer": MANUFACTURER,
+                    "model": "MixPad",
+                    "sw_version": "1.0",
+                }
+
         @property
         def is_on(self) -> bool:
             st = self.coordinator.get_device_state(self._device_id)

@@ -36,6 +36,17 @@ async def async_setup_entry(
             self._attr_name = name
             self._attr_device_class = CoverDeviceClass.CURTAIN
 
+            # 绑定到网关设备
+            uid = device.get("uid", "")
+            if uid:
+                self._attr_device_info = {
+                    "identifiers": {(DOMAIN, f"gateway_{uid}")},
+                    "name": f"Orvibo Gateway",
+                    "manufacturer": MANUFACTURER,
+                    "model": "MixPad",
+                    "sw_version": "1.0",
+                }
+
         def _parse_position(self, st: dict) -> Optional[int]:
             """解析窗帘位置。cmd=42: value1=0关100开，跟 HA 一致，直接返回。"""
             v1 = st.get("value1")

@@ -55,6 +55,17 @@ async def async_setup_entry(
             self._attr_unique_id = f"{DOMAIN}_light_{device_id}"
             self._attr_name = name
 
+            # 绑定到网关设备
+            uid = device.get("uid", "")
+            if uid:
+                self._attr_device_info = {
+                    "identifiers": {(DOMAIN, f"gateway_{uid}")},
+                    "name": f"Orvibo Gateway",
+                    "manufacturer": MANUFACTURER,
+                    "model": "MixPad",
+                    "sw_version": "1.0",
+                }
+
             cm_str = TYPE_COLOR_MODE_MAP.get(self._device_type, "onoff")
             if cm_str == "color_temp":
                 self._attr_supported_color_modes = {ColorMode.COLOR_TEMP}

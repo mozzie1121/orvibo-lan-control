@@ -47,6 +47,17 @@ async def async_setup_entry(
             self._attr_hvac_modes = [HVACMode.OFF, HVACMode.COOL, HVACMode.HEAT,
                                       HVACMode.FAN_ONLY, HVACMode.DRY]
             self._attr_fan_modes = ["auto", "low", "medium", "high"]
+
+            # 绑定到网关设备
+            uid = device.get("uid", "")
+            if uid:
+                self._attr_device_info = {
+                    "identifiers": {(DOMAIN, f"gateway_{uid}")},
+                    "name": f"Orvibo Gateway",
+                    "manufacturer": MANUFACTURER,
+                    "model": "MixPad",
+                    "sw_version": "1.0",
+                }
             self._attr_supported_features = (
                 ClimateEntityFeature.TARGET_TEMPERATURE |
                 ClimateEntityFeature.FAN_MODE
