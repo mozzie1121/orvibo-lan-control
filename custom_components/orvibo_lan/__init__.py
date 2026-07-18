@@ -32,7 +32,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     # 注册网关设备（供子设备 via_device 引用）
     from homeassistant.helpers import device_registry as dr
     dev_reg = dr.async_get(hass)
+    _LOGGER.warning(f"[注册网关] gateway_ips keys: {list(coordinator._gateway_ips.keys())}")
     for uid, ip in coordinator._gateway_ips.items():
+        _LOGGER.warning(f"[注册网关] 注册 gateway_{uid}")
         dev_reg.async_get_or_create(
             config_entry_id=entry.entry_id,
             identifiers={(DOMAIN, f"gateway_{uid}")},
