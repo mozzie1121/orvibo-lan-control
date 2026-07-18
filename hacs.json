@@ -1,1 +1,9 @@
-{"name": "Orvibo LAN Control", "render_readme": true, "homeassistant": "2024.1.0", "content_in_root": false}
+{
+  "name": "Orvibo LAN Control",
+  "render_readme": true,
+  "homeassistant": "2024.1.0",
+  "content_in_root": false,
+  "filename": "custom_components/orvibo_lan/manifest.json",
+  "country": ["CN"],
+  "zip_release": false
+}
