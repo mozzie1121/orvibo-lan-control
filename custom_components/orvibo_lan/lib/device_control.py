@@ -223,6 +223,70 @@ def light_colortemp(device_id: str, uid: str, device_type: int,
     return _to_lan(payload)
 
 
+def light_on_off(device_id: str, uid: str, device_type: int,
+                 power: bool, brightness: int = 0,
+                 color_temp_k: int = None, username: str = "") -> dict:
+    """一次性下发开关+亮度+色温（旧协议用 order=on/off + value2/value3）。"""
+    bri = max(0, min(int(brightness), 255))
+    serial = _serial()
+    uniSerial = _uni_serial()
+
+    if device_type == 503:
+        # ThingModel 色温灯带：用 set property
+        payload = {
+            "uid": uid, "userName": username,
+            "deviceId": device_id, "groupId": "",
+            "order": "set property",
+            "value1": 0, "value2": 0, "value3": 0, "value4": 0,
+            "delayTime": 0, "cmd": CMD_CONTROL,
+            "serial": serial, "clientType": 1,
+            "uniSerial": uniSerial, "serverRecord": False,
+            "ver": SOFTWARE_VER,
+            "properties": {
+                "onoff": {"status": "on" if power else "off"},
+                "brightness": {"percent": max(1, bri * 100 // 255)},
+            },
+        }
+        if color_temp_k:
+            ct = max(2700, min(int(color_temp_k), 6500))
+            payload["properties"]["colorTemp"] = {"value": ct}
+    elif device_type in (502, 102):
+        # ThingModel 调光灯：用 set property
+        payload = {
+            "uid": uid, "userName": username,
+            "deviceId": device_id, "groupId": "",
+            "order": "set property",
+            "value1": 0, "value2": 0, "value3": 0, "value4": 0,
+            "delayTime": 0, "cmd": CMD_CONTROL,
+            "serial": serial, "clientType": 1,
+            "uniSerial": uniSerial, "serverRecord": False,
+            "ver": SOFTWARE_VER,
+            "properties": {
+                "onoff": {"status": "on" if power else "off"},
+                "brightness": {"percent": max(1, bri * 100 // 255)},
+            },
+        }
+    else:
+        # 旧协议：order=on/off, value2=亮度, value3=色温(mired)
+        ct_val = 0
+        if color_temp_k:
+            ct_val = 1000000 // max(2700, min(int(color_temp_k), 6500))
+        payload = {
+            "uid": uid, "userName": username,
+            "deviceId": device_id, "groupId": "",
+            "order": "on" if power else "off",
+            "value1": 0 if power else 1,
+            "value2": bri,
+            "value3": ct_val,
+            "value4": 0,
+            "delayTime": 0, "cmd": CMD_CONTROL,
+            "serial": serial, "clientType": 1,
+            "uniSerial": uniSerial, "serverRecord": False,
+            "ver": SOFTWARE_VER,
+        }
+    return _to_lan(payload)
+
+
 # ==================== 开关控制 ====================
 
 def switch_control(device_id: str, uid: str, state: bool,
