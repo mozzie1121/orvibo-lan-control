@@ -64,6 +64,7 @@ async def async_setup_entry(
                     "manufacturer": MANUFACTURER,
                     "model": "MixPad",
                     "sw_version": "1.0",
+                    "connections": {("uid", uid)},
                 }
 
             cm_str = TYPE_COLOR_MODE_MAP.get(self._device_type, "onoff")

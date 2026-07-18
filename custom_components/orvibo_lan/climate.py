@@ -57,6 +57,7 @@ async def async_setup_entry(
                     "manufacturer": MANUFACTURER,
                     "model": "MixPad",
                     "sw_version": "1.0",
+                    "connections": {("uid", uid)},
                 }
             self._attr_supported_features = (
                 ClimateEntityFeature.TARGET_TEMPERATURE |
