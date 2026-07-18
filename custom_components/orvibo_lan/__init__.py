@@ -6,7 +6,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import DOMAIN, CONF_FAMILY_ID, PLATFORMS
+from .const import DOMAIN, CONF_FAMILY_ID, PLATFORMS, MANUFACTURER
 from .coordinator import OrviboLanCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,6 +28,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
+
+    # 注册网关设备（供子设备 via_device 引用）
+    from homeassistant.helpers import device_registry as dr
+    dev_reg = dr.async_get(hass)
+    for uid, ip in coordinator._gateway_ips.items():
+        dev_reg.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={(DOMAIN, f"gateway_{uid}")},
+            manufacturer=MANUFACTURER,
+            name="Orvibo Gateway",
+            model="MixPad",
+            sw_version="1.0",
+        )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
