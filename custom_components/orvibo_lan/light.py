@@ -188,10 +188,12 @@ async def async_setup_entry(
                     self.coordinator.username,
                 )
             elif ct_kelvin is not None:
+                current_brightness = self.brightness or 255
                 payload = dc.light_colortemp(
                     self._device_id, uid,
                     self._device_type,
                     ct_kelvin,
+                    brightness=current_brightness,
                     username=self.coordinator.username,
                 )
             else:
