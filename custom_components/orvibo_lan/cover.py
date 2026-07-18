@@ -47,9 +47,6 @@ async def async_setup_entry(
             }
             if uid:
                 dev_info["via_device"] = (DOMAIN, f"gateway_{uid}")
-            room_name = device.get("roomName") or device.get("room_name", "")
-            if room_name:
-                dev_info["suggested_area"] = room_name
             self._attr_device_info = dev_info
 
         def _parse_position(self, st: dict) -> Optional[int]:

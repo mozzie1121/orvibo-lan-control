@@ -1,5 +1,6 @@
 """ORVIBO LAN Control - 纯局域网控制的 HomeAssistant 集成。"""
 
+import asyncio
 import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -47,8 +48,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # 同步房间映射到 HA device registry（只在首次设置时执行）
-    # 找所有子设备，设置区域
+    # 同步房间映射到 HA device registry
+    # 等待设备注册完毕 + 分配区域
     for did, device in coordinator.devices.items():
         dt = coordinator.device_types.get(did, 0)
         if dt == 114:
@@ -62,13 +63,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         if not area:
             area = area_reg.async_create(room_name)
 
-        # 更新设备注册表中的区域
-        device_entry = dev_reg.async_get_device(
-            identifiers={(DOMAIN, f"device_{did}")}
-        )
+        # 等待设备注册到 device registry（重试最多 10 次）
+        device_entry = None
+        for _ in range(10):
+            device_entry = dev_reg.async_get_device(
+                identifiers={(DOMAIN, f"device_{did}")}
+            )
+            if device_entry:
+                break
+            await asyncio.sleep(0.5)
+
         if device_entry and device_entry.area_id != area.id:
             dev_reg.async_update_device(device_entry.id, area_id=area.id)
             _LOGGER.debug(f"设备 {device.get('deviceName', did)} → 区域 {room_name}")
+        elif not device_entry:
+            _LOGGER.debug(f"设备 {device.get('deviceName', did)} 未注册到 device registry，跳过区域分配")
 
     _LOGGER.debug("Orvibo LAN Control 设置完成")
     return True
