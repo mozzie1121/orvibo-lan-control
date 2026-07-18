@@ -5,7 +5,6 @@
 **欧瑞博智能家居 · 局域网离线控制方案**
 
 [![GitHub Release](https://img.shields.io/github/v/release/mozzie1121/orvibo-lan-control)](https://github.com/mozzie1121/orvibo-lan-control/releases)
-[![HACS Validation](https://github.com/mozzie1121/orvibo-lan-control/actions/workflows/hacs.yml/badge.svg)](https://github.com/mozzie1121/orvibo-lan-control/actions/workflows/hacs.yml)
 [![License: MIT](https://img.shields.io/github/license/mozzie1121/orvibo-lan-control)](LICENSE)
 
 通过局域网 TCP 8088 直接控制 Orvibo Zigbee 设备，不依赖云端。
@@ -23,7 +22,7 @@ orvibo-lan-control/
 ├── custom_components/orvibo_lan/   # 🤖 Home Assistant 自定义组件
 │   ├── __init__.py                 # 插件入口 / 配置加载
 │   ├── config_flow.py              # UI 配置流
-│   ├── coordinator.py              # 轮询协调器 + 网关管理
+│   ├── coordinator.py              # 协调器 + 网关管理 + 状态监听
 │   ├── climate.py                  # 空调平台
 │   ├── light.py                    # 灯光平台
 │   ├── cover.py                    # 窗帘平台
@@ -53,7 +52,7 @@ orvibo-lan-control/
 │                  │ ───────────────────────→  │ MixPad   │
 │                  │                            │ 网关     │
 │                  │ ←───────────────────────  │          │
-│                  │   回复/状态推送             └──────────┘
+│                  │   回复/状态推送 (cmd=42)    └──────────┘
 └─────────────────┘
 ```
 
@@ -61,7 +60,7 @@ orvibo-lan-control/
 2. **TCP 连接网关** — 连接局域网内 MixPad 的 8088 端口
 3. **Hello/Login** — 获取 session key 后认证
 4. **发送控制** — AES-ECB 加密 JSON payload，通过 TCP 发送
-5. **状态推送** — 网关实时推送设备状态变化（cmd=42）
+5. **状态推送** — 网关实时推送设备状态变化（cmd=42），无需轮询
 6. **心跳保活** — 每 60s 心跳包
 
 ## 安装（Home Assistant）
@@ -103,13 +102,13 @@ cp -r custom_components/orvibo_lan /path/to/config/custom_components/
 
 | 类别 | 型号/系列 | 功能 |
 |:----|:----------|:-----|
-| 🔘 **开关** | MixSwitch 系列（classic / bach / defy / gauss） | 开/关 |
+| 🔘 **开关** | MixSwitch 系列（Classic / Bach / Defy / Gauss） | 开/关 |
 | ❄️ **空调** | AirMaster 系列空调网关 | 模式/温度/风速 |
 | 🪟 **窗帘** | 精筑系列 / 超静音系列 窗帘电机 | 开/关/停/位置 |
 | 💡 **筒射灯** | SoPro 系列（S3 / S5 / S10）智能筒射灯 | 开/关/亮度/色温 |
 | 💡 **调光灯** | 二代智能调光灯 | 开/关/亮度 |
 | 🌈 **灯带** | 智能灯带控制器 | 开/关/亮度/色温 |
-| 🌬️ **风扇** | AirMaster 系列新风控制器 | 开/关/风速 |
+| ❄️ **空调/新风** | AirMaster 系列控制器 | 开/关/模式/温度/风速 |
 
 ### 🔧 待测试
 
@@ -134,7 +133,10 @@ cp -r custom_components/orvibo_lan /path/to/config/custom_components/
 - **默认 key**：`khggd54865SNJHGF`
 - **心跳间隔**：60 秒
 - **控制 payload**：JSON，加密传输，`source: "ZhiJia365"`
-- **状态更新**：网关实时推送 cmd=42，含 ThingModel（statusType=501/502/503）和旧协议（statusType=2）两种格式
+- **状态反馈**：网关实时推送 cmd=42，支持两种格式：
+  - **ThingModel**（statusType=501/502/503）：properties.onoff / brightness.percent / colorTemp.value
+  - **旧协议**（statusType=2）：value1=开关、value2=亮度、value3=色温(mired)、value4=预留
+- **区域同步**：首次配置时通过 readtable API 的 room[] 映射自动分配 HA 区域
 
 ### 空调控制（type=36）
 
