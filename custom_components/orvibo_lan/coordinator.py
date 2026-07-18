@@ -387,9 +387,18 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         device = self.devices.get(device_id)
         if not device:
             return None
+
         room_id = device.get("roomId", "")
         if room_id and room_id in self.room_names:
             return self.room_names[room_id]
-        # 回退：设备自带的 roomName 字段（某些旧协议）
+
+        device_state = self.get_device_state(device_id)
+        if device_state:
+            props = device_state.get("properties", {})
+            descriptor = props.get("Descriptor", {})
+            room_id_from_state = descriptor.get("roomId", "")
+            if room_id_from_state and room_id_from_state in self.room_names:
+                return self.room_names[room_id_from_state]
+
         room_name = device.get("roomName")
         return room_name if room_name else None

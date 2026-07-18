@@ -4,13 +4,46 @@ import asyncio
 import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
+from homeassistant.const import CONF_USERNAME, CONF_PASSWORD, EVENT_HOMEASSISTANT_STARTED
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import DOMAIN, CONF_FAMILY_ID, PLATFORMS, MANUFACTURER
 from .coordinator import OrviboLanCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+
+async def _async_assign_areas(hass: HomeAssistant, entry: ConfigEntry):
+    """在 HA 启动完成后，将设备分配到对应的区域（房间）。"""
+    coordinator = hass.data[DOMAIN].get(entry.entry_id)
+    if not coordinator:
+        return
+
+    from homeassistant.helpers import device_registry as dr, area_registry as ar
+    dev_reg = dr.async_get(hass)
+    area_reg = ar.async_get(hass)
+
+    for did, device in coordinator.devices.items():
+        dt = coordinator.device_types.get(did, 0)
+        if dt == 114:
+            continue
+        room_name = coordinator.get_room_name(did)
+        if not room_name:
+            continue
+
+        area = area_reg.async_get_area_by_name(room_name)
+        if not area:
+            area = area_reg.async_create(room_name)
+
+        device_entry = dev_reg.async_get_device(
+            identifiers={(DOMAIN, f"device_{did}")}
+        )
+
+        if device_entry and device_entry.area_id != area.id:
+            dev_reg.async_update_device(device_entry.id, area_id=area.id)
+            _LOGGER.debug(f"设备 {device.get('deviceName', did)} → 区域 {room_name}")
+        elif not device_entry:
+            _LOGGER.debug(f"设备 {device.get('deviceName', did)} 未注册到 device registry，跳过区域分配")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
@@ -30,10 +63,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    # 注册网关设备（供子设备 via_device 引用）
-    from homeassistant.helpers import device_registry as dr, area_registry as ar
+    from homeassistant.helpers import device_registry as dr
     dev_reg = dr.async_get(hass)
-    area_reg = ar.async_get(hass)
     _LOGGER.debug(f"[注册网关] gateway_ips keys: {list(coordinator._gateway_ips.keys())}")
     for uid, ip in coordinator._gateway_ips.items():
         _LOGGER.debug(f"[注册网关] 注册 gateway_{uid}")
@@ -48,36 +79,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # 同步房间映射到 HA device registry
-    # 等待设备注册完毕 + 分配区域
-    for did, device in coordinator.devices.items():
-        dt = coordinator.device_types.get(did, 0)
-        if dt == 114:
-            continue  # 网关本身不分配区域
-        room_name = coordinator.get_room_name(did)
-        if not room_name:
-            continue
-
-        # 查找或创建 HA 区域
-        area = area_reg.async_get_area_by_name(room_name)
-        if not area:
-            area = area_reg.async_create(room_name)
-
-        # 等待设备注册到 device registry（重试最多 10 次）
-        device_entry = None
-        for _ in range(10):
-            device_entry = dev_reg.async_get_device(
-                identifiers={(DOMAIN, f"device_{did}")}
-            )
-            if device_entry:
-                break
-            await asyncio.sleep(0.5)
-
-        if device_entry and device_entry.area_id != area.id:
-            dev_reg.async_update_device(device_entry.id, area_id=area.id)
-            _LOGGER.debug(f"设备 {device.get('deviceName', did)} → 区域 {room_name}")
-        elif not device_entry:
-            _LOGGER.debug(f"设备 {device.get('deviceName', did)} 未注册到 device registry，跳过区域分配")
+    if hass.is_running:
+        await _async_assign_areas(hass, entry)
+    else:
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED,
+                                   lambda _: hass.create_task(_async_assign_areas(hass, entry)))
 
     _LOGGER.debug("Orvibo LAN Control 设置完成")
     return True
