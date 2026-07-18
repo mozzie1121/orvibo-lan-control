@@ -37,11 +37,11 @@ async def async_setup_entry(
             self._attr_device_class = CoverDeviceClass.CURTAIN
 
         def _parse_position(self, st: dict) -> Optional[int]:
-            """解析窗帘位置。value1: 0=开 100=关 → HA 0=关 100=开"""
+            """解析窗帘位置。cmd=42: value1=0关100开，跟 HA 一致，直接返回。"""
             v1 = st.get("value1")
             if v1 is not None:
-                rev = 100 - int(v1)
-                return max(0, min(rev, 100))
+                pos = int(v1)
+                return max(0, min(pos, 100))
             return None
 
         @property
