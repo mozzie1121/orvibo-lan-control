@@ -5,6 +5,7 @@
 **欧瑞博智能家居 · 局域网离线控制方案**
 
 [![GitHub Release](https://img.shields.io/github/v/release/mozzie1121/orvibo-lan-control)](https://github.com/mozzie1121/orvibo-lan-control/releases)
+[![HACS Validation](https://github.com/mozzie1121/orvibo-lan-control/actions/workflows/hacs.yml/badge.svg)](https://github.com/mozzie1121/orvibo-lan-control/actions/workflows/hacs.yml)
 [![License: MIT](https://img.shields.io/github/license/mozzie1121/orvibo-lan-control)](LICENSE)
 
 通过局域网 TCP 8088 直接控制 Orvibo Zigbee 设备，不依赖云端。
