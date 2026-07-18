@@ -39,7 +39,7 @@ async def async_setup_entry(
             # 绑定到网关设备
             uid = device.get("uid", "")
             if uid:
-                self._attr_device_info = {
+                dev_info = {
                     "identifiers": {(DOMAIN, f"gateway_{uid}")},
                     "name": f"Orvibo Gateway",
                     "manufacturer": MANUFACTURER,
@@ -47,6 +47,10 @@ async def async_setup_entry(
                     "sw_version": "1.0",
                     "connections": {("uid", uid)},
                 }
+                room_name = device.get("roomName") or device.get("room_name", "")
+                if room_name:
+                    dev_info["suggested_area"] = room_name
+                self._attr_device_info = dev_info
 
         def _parse_position(self, st: dict) -> Optional[int]:
             """解析窗帘位置。cmd=42: value1=0关100开，跟 HA 一致，直接返回。"""
