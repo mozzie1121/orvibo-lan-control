@@ -51,6 +51,8 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self._gateway_connections: Dict[str, LanConnection] = {}
         # {gateway_uid: ip}
         self._gateway_ips: Dict[str, str] = {}
+        # LAN 推送属性缓存（cmd=42 增量合并，不受云端轮询覆盖）
+        self._lan_properties: Dict[str, dict] = {}
         # 设备列表（last known from readtable）
         self.devices: Dict[str, dict] = {}
         # 设备状态（last known from readtable）
@@ -233,22 +235,8 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
         old_state = self.device_states.get(did, {})
 
-        # 合并更新（保留 online 等云端字段，覆盖 value/properties）
+        # 合并 value1-4（cmd=42 增量覆盖，云端轮询不会重置）
         new_state = dict(old_state)
-
-        # properties 是增量推送的，需要智能合并
-        incoming_props = payload.get("properties")
-        if incoming_props:
-            old_props = new_state.get("properties", {}) or {}
-            if isinstance(old_props, dict) and isinstance(incoming_props, dict):
-                merged_props = dict(old_props)
-                merged_props.update(incoming_props)
-                new_state["properties"] = merged_props
-            else:
-                new_state["properties"] = incoming_props
-        elif "properties" in payload:
-            new_state["properties"] = payload["properties"]
-
         for key in ("value1", "value2", "value3", "value4",
                      "statusType", "subDeviceType",
                      "alarmType", "online"):
@@ -256,6 +244,16 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 new_state[key] = payload[key]
         new_state["updateTime"] = payload.get("updateTime",
                                                old_state.get("updateTime", ""))
+
+        # cmd=42 properties 是增量推送的，存到独立缓存避免被云端轮询覆盖
+        incoming_props = payload.get("properties")
+        if incoming_props and isinstance(incoming_props, dict):
+            old_lan = self._lan_properties.get(did, {})
+            merged = dict(old_lan)
+            merged.update(incoming_props)
+            self._lan_properties[did] = merged
+            # 也写入 device_states 给旧代码读取，但轮询会覆盖
+            new_state["properties"] = self._lan_properties[did]
 
         self.device_states[did] = new_state
         _LOGGER.debug(f"cmd=42 更新: {did[:16]}.. props={payload.get('value1', payload.get('properties', '?'))}")
@@ -361,5 +359,13 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self._gateway_connections.clear()
 
     def get_device_state(self, device_id: str) -> Optional[dict]:
-        """获取设备状态。"""
-        return self.device_states.get(device_id)
+        """获取设备状态（含 LAN 推送的属性覆盖）。"""
+        base = self.device_states.get(device_id)
+        if not base:
+            return None
+        # 如果 _lan_properties 有数据，覆盖到 base 上
+        lan_props = self._lan_properties.get(device_id)
+        if lan_props:
+            base = dict(base)
+            base["properties"] = dict(lan_props)
+        return base
