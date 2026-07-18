@@ -49,20 +49,28 @@ def _crc32(data: bytes) -> bytes:
     return struct.pack(">I", binascii.crc32(data) & 0xFFFFFFFF)
 
 
+# AES cipher 单例（密钥固定不变，无需每次重新创建 cipher 对象 -- 高频控制场景下可显著减少临时对象）
+_AES_BACKEND = default_backend()
+_AES_CIPHER_CACHE: dict[bytes, Cipher] = {}
+
+
+def _get_cipher(key: bytes, mode) -> Cipher:
+    """获取或创建 AES cipher 单例。key 相同时复用 cipher 对象。"""
+    if key not in _AES_CIPHER_CACHE:
+        _AES_CIPHER_CACHE[key] = Cipher(algorithms.AES(key), mode, backend=_AES_BACKEND)
+    return _AES_CIPHER_CACHE[key]
+
+
 def _encrypt_aes_ecb(key: bytes, plaintext: str) -> bytes:
     data = plaintext.encode("utf-8")
     padder = padding.PKCS7(128).padder()
     padded = padder.update(data) + padder.finalize()
-    encryptor = Cipher(
-        algorithms.AES(key), modes.ECB(), backend=default_backend()
-    ).encryptor()
+    encryptor = _get_cipher(key, modes.ECB()).encryptor()
     return encryptor.update(padded) + encryptor.finalize()
 
 
 def _decrypt_aes_ecb(key: bytes, encrypted: bytes) -> str:
-    decryptor = Cipher(
-        algorithms.AES(key), modes.ECB(), backend=default_backend()
-    ).decryptor()
+    decryptor = _get_cipher(key, modes.ECB()).decryptor()
     data = decryptor.update(encrypted) + decryptor.finalize()
     unpadder = padding.PKCS7(128).unpadder()
     unpad = unpadder.update(data) + unpadder.finalize()

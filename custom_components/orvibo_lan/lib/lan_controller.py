@@ -54,24 +54,44 @@ class LanConnection:
             return False
 
     async def close(self):
+        """安全关闭连接：取消任务 → 关闭 writer → 清理 transport → 清理 buffer。"""
+        # 1. 取消后台任务
         if self._heartbeat_task and not self._heartbeat_task.done():
             self._heartbeat_task.cancel()
             try:
                 await self._heartbeat_task
             except asyncio.CancelledError:
                 pass
+        self._heartbeat_task = None
+
         if self._listen_task and not self._listen_task.done():
             self._listen_task.cancel()
             try:
                 await self._listen_task
             except asyncio.CancelledError:
                 pass
+        self._listen_task = None
+
+        # 2. 关闭 writer 并等待完全关闭
+        transport = None
         if self.writer:
             try:
                 self.writer.close()
                 await self.writer.wait_closed()
+            except Exception as e:
+                _LOGGER.debug(f"关闭 writer 异常 {self.host}: {e}")
+            finally:
+                self.writer = None
+
+        # 3. 清理 reader 内部缓冲区，释放读端资源
+        if self.reader:
+            try:
+                self.reader.feed_eof()
             except Exception:
                 pass
+            self.reader = None
+
+        # 4. 标记断开
         self.connected = False
         _LOGGER.debug(f"连接已关闭 {self.host}")
 

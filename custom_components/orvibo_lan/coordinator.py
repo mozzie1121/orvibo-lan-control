@@ -20,6 +20,17 @@ from .lib import device_control as dc
 
 _LOGGER = logging.getLogger(__name__)
 
+# 安全上限
+_MAX_DEVICES = 1000      # 设备列表上限，防止异常数据导致内存溢出
+_MAX_LAN_PROPS = 200      # LAN 推送缓存上限
+
+# 状态更新中只增量更新的字段（避免全量替换）
+_INCR_UPDATE_KEYS = frozenset((
+    "value1", "value2", "value3", "value4",
+    "statusType", "subDeviceType",
+    "alarmType", "online", "updateTime",
+))
+
 
 class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
     """Orvibo LAN 协调器。
@@ -31,6 +42,17 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
     - 定时轮询设备状态
     - 暴露设备控制接口给各平台
     """
+
+    __slots__ = (
+        "username", "password", "family_id",
+        "https_client",
+        "_gateway_connections", "_gateway_ips",
+        "_lan_properties", "_lan_properties_order",
+        "devices", "device_states", "device_types",
+        "room_names", "_discover_task",
+        "_debounce_timer", "_notify_task",
+        "_heartbeat_tasks",
+    )
 
     def __init__(self, hass: HomeAssistant, username: str, password: str,
                  family_id: str = None):
@@ -53,6 +75,8 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self._gateway_ips: Dict[str, str] = {}
         # LAN 推送属性缓存（cmd=42 增量合并，不受云端轮询覆盖）
         self._lan_properties: Dict[str, dict] = {}
+        # LAN 推送属性插入顺序（用于 LRU 淘汰）
+        self._lan_properties_order: list = []
         # 设备列表（last known from readtable）
         self.devices: Dict[str, dict] = {}
         # 设备状态（last known from readtable）
@@ -63,6 +87,12 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self.room_names: Dict[str, str] = {}
         # 网关发现任务
         self._discover_task: Optional[asyncio.Task] = None
+
+        # 节流通知字段
+        self._debounce_timer: Optional[asyncio.TimerHandle] = None
+        self._notify_task: Optional[asyncio.Task] = None
+        # {gateway_uid: asyncio.Task} 心跳任务追踪，用于安全取消
+        self._heartbeat_tasks: Dict[str, asyncio.Task] = {}
 
     async def _async_setup(self):
         """初始化：登录 + 获取设备列表 + 连接网关。"""
@@ -107,20 +137,41 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 if rid:
                     self.room_names[rid] = r.get("roomName", "")
 
-            # 重建设备索引
-            self.devices = {}
-            self.device_states = {}
-            self.device_types = {}
+            # 安全上限检查
+            if len(devices) > _MAX_DEVICES:
+                _LOGGER.warning(
+                    f"云端返回设备数 {len(devices)} 超过上限 {_MAX_DEVICES}，已截断"
+                )
+                devices = devices[:_MAX_DEVICES]
+
+            # 重建索引（同时清理已不存在设备的 _lan_properties）
+            new_devices = {}
+            new_device_states = {}
+            new_device_types = {}
 
             for d in devices:
                 did = d["deviceId"]
-                self.devices[did] = d
+                new_devices[did] = d
                 dt_raw = d.get("deviceType", 0)
-                self.device_types[did] = int(dt_raw) if isinstance(dt_raw, str) else dt_raw
+                new_device_types[did] = int(dt_raw) if isinstance(dt_raw, str) else dt_raw
 
             for s in statuses.values():
                 did = s["deviceId"]
-                self.device_states[did] = s
+                if did in new_devices:
+                    new_device_states[did] = s
+
+            self.devices = new_devices
+            self.device_states = new_device_states
+            self.device_types = new_device_types
+
+            # 清理不再存在的设备的 LAN 缓存
+            stale_lan = [k for k in self._lan_properties if k not in new_devices]
+            for k in stale_lan:
+                self._lan_properties.pop(k, None)
+                if k in self._lan_properties_order:
+                    self._lan_properties_order.remove(k)
+            if stale_lan:
+                _LOGGER.debug(f"清理了 {len(stale_lan)} 个过期 LAN 缓存条目")
 
             _LOGGER.debug(f"从云端获取到 {len(self.devices)} 个设备")
 
@@ -138,6 +189,10 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 ok = await conn.connect_and_login(self.username, self.password)
                 if ok:
                     self._gateway_connections[uid] = conn
+                    # 启动心跳任务并追踪
+                    self._heartbeat_tasks[uid] = asyncio.create_task(
+                        self._heartbeat_loop(uid, conn)
+                    )
                     # 启动状态监听循环，捕获 cmd=42 推送
                     # 监听循环在同个事件循环中运行，直接同步回调
                     conn.start_listen_loop(self._on_status_update)
@@ -146,6 +201,51 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                     _LOGGER.debug(f"网关 {ip} (uid={uid[:12]}...) 连接失败")
             except Exception as e:
                 _LOGGER.debug(f"连接网关 {ip} 异常: {e}")
+
+    async def _heartbeat_loop(self, uid: str, conn: LanConnection):
+        """网关心跳任务（后台运行，可被安全取消和追踪）。
+
+        Args:
+            uid: 网关 UID（用于任务追踪）
+            conn: LanConnection 实例
+        """
+        try:
+            while conn.connected:
+                await asyncio.sleep(60)
+                try:
+                    from .lib.packet import (
+                        build_packet, DK_TYPE, CMD_HEARTBEAT, SOFTWARE_VER, DEBUG_INFO,
+                    )
+
+                    def _serial() -> int:
+                        s = str(int(time.time() * 1000))
+                        return int(s[-6:])
+
+                    payload = {
+                        "cmd": CMD_HEARTBEAT,
+                        "serial": _serial(),
+                        "clientType": 1,
+                        "uniSerial": _serial(),
+                        "serverRecord": False,
+                        "ver": SOFTWARE_VER,
+                        "debugInfo": DEBUG_INFO,
+                    }
+                    conn.writer.write(
+                        build_packet(DK_TYPE, conn.session_key, conn.session_id, payload)
+                    )
+                    await conn.writer.drain()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    _LOGGER.debug(f"心跳异常 ({uid[:12]}): {e}")
+                    break
+        except asyncio.CancelledError:
+            _LOGGER.debug(f"心跳任务被取消 ({uid[:12]})")
+        finally:
+            # 从追踪字典中清理自身引用
+            if uid in self._heartbeat_tasks and \
+               self._heartbeat_tasks[uid] is asyncio.current_task():
+                del self._heartbeat_tasks[uid]
 
     async def _gateway_discover_loop(self):
         """定时 UDP 发现网关，IP 变化时重建连接。"""
@@ -165,8 +265,9 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                         _LOGGER.debug(f"网关 {uid[:12]} IP 变化: {old_ip} → {ip}")
                         self._gateway_ips[uid] = ip
 
-                        # 断开旧连接
+                        # 断开旧连接（含心跳任务清理）
                         old_conn = self._gateway_connections.pop(uid, None)
+                        await self._cancel_heartbeat(uid)
                         if old_conn:
                             await old_conn.close()
 
@@ -175,12 +276,25 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                         ok = await conn.connect_and_login(self.username, self.password)
                         if ok:
                             self._gateway_connections[uid] = conn
+                            self._heartbeat_tasks[uid] = asyncio.create_task(
+                                self._heartbeat_loop(uid, conn)
+                            )
                             _LOGGER.debug(f"网关 {ip} 重新连接成功")
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 _LOGGER.debug(f"网关发现循环异常: {e}")
+
+    async def _cancel_heartbeat(self, uid: str):
+        """安全取消指定网关的心跳任务。"""
+        task = self._heartbeat_tasks.pop(uid, None)
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     async def _udp_discover(self) -> Dict[str, str]:
         """UDP 广播发现网关，返回 {uid: ip}。"""
@@ -240,41 +354,43 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
         old_state = self.device_states.get(did, {})
 
-        # 合并 value1-4（cmd=42 增量覆盖，云端轮询不会重置）
-        new_state = dict(old_state)
-        for key in ("value1", "value2", "value3", "value4",
-                     "statusType", "subDeviceType",
-                     "alarmType", "online"):
-            if key in payload:
-                new_state[key] = payload[key]
-        new_state["updateTime"] = payload.get("updateTime",
-                                               old_state.get("updateTime", ""))
+        # 增量更新普通字段（不创建新 dict，直接原地 update）
+        changed = False
+        for key in _INCR_UPDATE_KEYS:
+            if key in payload and payload[key] != old_state.get(key):
+                old_state[key] = payload[key]
+                changed = True
 
-        # cmd=42 properties 是增量推送的，存到独立缓存避免被云端轮询覆盖
+        # 处理 LAN properties 增量合并
         incoming_props = payload.get("properties")
         if incoming_props and isinstance(incoming_props, dict):
-            old_lan = self._lan_properties.get(did, {})
-            merged = dict(old_lan)
-            merged.update(incoming_props)
-            self._lan_properties[did] = merged
-            # 限制 _lan_properties 条目数，防止无限增长
-            if len(self._lan_properties) > 200:
-                # 移除最旧的条目（dict 在 3.7+ 保持插入顺序）
-                oldest = next(iter(self._lan_properties))
-                del self._lan_properties[oldest]
-            # 也写入 device_states 给旧代码读取，但轮询会覆盖
-            new_state["properties"] = self._lan_properties[did]
+            old_lan = self._lan_properties.get(did)
+            if old_lan is None:
+                # 新设备，创建条目并记录插入顺序
+                self._lan_properties[did] = dict(incoming_props)
+                self._lan_properties_order.append(did)
+                changed = True
+            else:
+                # 增量更新（仅更新变化的字段）
+                for k, v in incoming_props.items():
+                    if v is not None and old_lan.get(k) != v:
+                        old_lan[k] = v
+                        changed = True
 
-        self.device_states[did] = new_state
-        _LOGGER.debug(f"cmd=42 更新: {did[:16]}.. props={payload.get('value1', payload.get('properties', '?'))}")
+            # LRU 淘汰策略：超出上限时删除最旧条目
+            while len(self._lan_properties) > _MAX_LAN_PROPS:
+                oldest = self._lan_properties_order.pop(0)
+                self._lan_properties.pop(oldest, None)
+                _LOGGER.debug(f"LAN 缓存淘汰 (>= {_MAX_LAN_PROPS}): {oldest[:16]}..")
+
+            # 写入 device_states，但只存引用而非深拷贝——避免 GC 压力
+            old_state["properties"] = self._lan_properties[did]
+
+        if changed:
+            _LOGGER.debug(f"cmd=42 更新: {did[:16]}.. props={payload.get('value1', payload.get('properties', '?'))}")
 
         # 节流通知：200ms 内多次 cmd=42 合并为一次通知
         # 避免高频推送挤爆 HA 事件循环
-        if not hasattr(self, '_debounce_timer'):
-            self._debounce_timer = None
-        if not hasattr(self, '_notify_task'):
-            self._notify_task = None
-
         if self._debounce_timer is not None:
             self._debounce_timer.cancel()
             self._debounce_timer = None
@@ -377,10 +493,26 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 await self._discover_task
             except asyncio.CancelledError:
                 pass
+        self._discover_task = None
 
+        # 取消所有心跳任务
+        for uid in list(self._heartbeat_tasks.keys()):
+            await self._cancel_heartbeat(uid)
+
+        # 断开所有网关连接
         for uid, conn in list(self._gateway_connections.items()):
             await conn.close()
         self._gateway_connections.clear()
+
+        # 清空缓存
+        self._lan_properties.clear()
+        self._lan_properties_order.clear()
+        self.devices.clear()
+        self.device_states.clear()
+        self.device_types.clear()
+        self.room_names.clear()
+
+        _LOGGER.debug("协调器资源已全部清理")
 
     def get_device_state(self, device_id: str) -> Optional[dict]:
         """获取设备状态（含 LAN 推送的属性覆盖）。"""

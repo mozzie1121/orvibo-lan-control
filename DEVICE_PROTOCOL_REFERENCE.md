@@ -629,5 +629,79 @@ ThingModelClass
 
 ---
 
+---
+
+## 九、内存管理与资源释放规范
+
+> 版本：v0.3.5+
+
+### 9.1 核心原则
+
+| 原则 | 说明 |
+|:----|:------|
+| 链路追踪 | 所有 asyncio.Task 必须有引用追踪，取消后从追踪字典清理 |
+| 增量更新 | 状态缓存使用 dict.update() 原地更新，避免全量替换创建临时对象 |
+| 上限保护 | 设备列表和 LAN 缓存必须有硬上限，超过时 LRU 淘汰或拒绝 |
+| 资源释放 | TCP writer.close() 后必须 await wait_closed()，reader 调用 feed_eof() |
+| 单例复用 | AES 加密等固定密钥的 cipher 对象在模块级别缓存 |
+
+### 9.2 Task 生命周期管理
+
+```python
+# 创建时注册
+self._heartbeat_tasks[uid] = asyncio.create_task(self._heartbeat_loop(uid, conn))
+
+# 取消时从追踪字典移除
+task = self._heartbeat_tasks.pop(uid, None)
+if task and not task.done():
+    task.cancel()
+    await task
+
+# 任务自身的 finally 块中清理
+finally:
+    if uid in self._heartbeat_tasks and \
+       self._heartbeat_tasks[uid] is asyncio.current_task():
+        del self._heartbeat_tasks[uid]
+```
+
+### 9.3 状态缓存增量更新
+
+```python
+# 错误做法（全量替换 — 高频推送下 GC 压力巨大）
+new_state = dict(old_state)
+new_state.update(incoming)
+self.device_states[did] = new_state
+
+# 正确做法（原地增量更新 — 避免创建临时对象）
+for key in fields:
+    if key in payload and payload[key] != old_state.get(key):
+        old_state[key] = payload[key]
+```
+
+### 9.4 安全上限
+
+| 缓存 | 上限 | 溢出策略 |
+|:----|:----:|:--------|
+| `coordinator.devices` | 1000 | 云端返回时截断 + 日志警告 |
+| `coordinator._lan_properties` | 200 | LRU 淘汰最旧条目 |
+| `coordinator._lan_properties_order` | 200 | 同步维护插入顺序列表 |
+
+### 9.5 资源释放顺序
+
+关闭网关连接时的资源释放必须按以下顺序：
+
+1. 取消 `_heartbeat_task` 并 await（置为 None）
+2. 取消 `_listen_task` 并 await（置为 None）
+3. 关闭 `writer` → `await writer.wait_closed()` → 置为 None
+4. `reader.feed_eof()` → 置为 None
+5. 标记 `connected = False`
+
+### 9.6 AES 加密单例
+
+`packet.py` 中的 `_AES_CIPHER_CACHE` 是模块级字典，key 相同时复用 Cipher 对象。
+asyncio 单线程环境无需加锁保护。
+
+---
+
 > 来源：局域网 TCP 8088 实测验证 + 互联网收集
-> 最后更新：2026-07-18
+> 最后更新：2026-07-19
