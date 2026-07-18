@@ -41,7 +41,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     if coordinator:
         await coordinator.async_cleanup()
 
-    unload_ok = await hass.config_entries.async_forward_entry_unload(entry, PLATFORMS)
+    # HA 2026 要求逐个 domain 卸载
+    unload_ok = True
+    for domain in PLATFORMS:
+        result = await hass.config_entries.async_forward_entry_unload(entry, domain)
+        if not result:
+            unload_ok = False
 
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
