@@ -226,23 +226,34 @@ class HttpsClient:
         """建立 uid → IP 的映射。
 
         readtable API 返回的 gateway 数据含 localStaticIP。
+        只保留在 device 数组中确认是 MixPad 网关 (deviceType=114) 的条目。
         """
+        # 先建立已知 MixPad 网关的 uid 集合
+        mixpad_uids = set()
+        for d in devices:
+            if d.get("deviceType") == 114:
+                uid = d.get("uid", "")
+                if uid:
+                    mixpad_uids.add(uid)
+
         gateway_ips = {}
 
         for g in gateways:
             gw_uid = g.get("uid", "")
+            # 跳过非 MixPad 网关（如晾衣架等设备也出现在 gateway 数组中）
+            if gw_uid not in mixpad_uids:
+                continue
             ip = g.get("localStaticIP", "") or g.get("ip", "")
             if ip and ":" in ip:
                 ip = ip.split(":")[0]
             if gw_uid and ip:
                 gateway_ips[gw_uid] = ip
 
-        # 也尝试从 type=114 设备匹配
+        # 也尝试从 type=114 设备匹配（回退：deviceType=114 但 gateway 数组没有对应记录）
         for d in devices:
             if d.get("deviceType") == 114:
                 uid = d.get("uid", "")
                 if uid and uid not in gateway_ips:
-                    # 回退：在网关列表中找同 uid 的 IP
                     for g in gateways:
                         if g.get("uid") == uid:
                             ip = g.get("localStaticIP", "") or g.get("ip", "")
