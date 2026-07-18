@@ -59,6 +59,8 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         self.device_states: Dict[str, dict] = {}
         # 设备类型归属（deviceId → device_type）
         self.device_types: Dict[str, int] = {}
+        # 房间映射（roomId → roomName）
+        self.room_names: Dict[str, str] = {}
         # 网关发现任务
         self._discover_task: Optional[asyncio.Task] = None
 
@@ -92,11 +94,18 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
     async def _refresh_devices_from_cloud(self):
         """从云端 API 拉取设备列表和状态。"""
         try:
-            devices, statuses, gateways, gateway_ips, _ = \
+            devices, statuses, gateways, rooms, gateway_ips, _ = \
                 await self.https_client.fetch_devices()
 
             # 更新网关IP映射
             self._gateway_ips = gateway_ips
+
+            # 解析房间映射
+            self.room_names = {}
+            for r in rooms:
+                rid = r.get("roomId", "")
+                if rid:
+                    self.room_names[rid] = r.get("roomName", "")
 
             # 重建设备索引
             self.devices = {}
@@ -365,3 +374,22 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             base = dict(base)
             base["properties"] = dict(lan_props)
         return base
+
+    def get_room_name(self, device_id: str) -> Optional[str]:
+        """获取设备所属房间名。
+
+        Args:
+            device_id: 设备 ID
+
+        Returns:
+            房间名，如果没有则返回 None
+        """
+        device = self.devices.get(device_id)
+        if not device:
+            return None
+        room_id = device.get("roomId", "")
+        if room_id and room_id in self.room_names:
+            return self.room_names[room_id]
+        # 回退：设备自带的 roomName 字段（某些旧协议）
+        room_name = device.get("roomName")
+        return room_name if room_name else None

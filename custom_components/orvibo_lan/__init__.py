@@ -30,8 +30,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     # 注册网关设备（供子设备 via_device 引用）
-    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import device_registry as dr, area_registry as ar
     dev_reg = dr.async_get(hass)
+    area_reg = ar.async_get(hass)
     _LOGGER.warning(f"[注册网关] gateway_ips keys: {list(coordinator._gateway_ips.keys())}")
     for uid, ip in coordinator._gateway_ips.items():
         _LOGGER.warning(f"[注册网关] 注册 gateway_{uid}")
@@ -45,6 +46,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # 同步房间映射到 HA device registry（只在首次设置时执行）
+    # 找所有子设备，设置区域
+    for did, device in coordinator.devices.items():
+        dt = coordinator.device_types.get(did, 0)
+        if dt == 114:
+            continue  # 网关本身不分配区域
+        room_name = coordinator.get_room_name(did)
+        if not room_name:
+            continue
+
+        # 查找或创建 HA 区域
+        area = area_reg.async_get_area_by_name(room_name)
+        if not area:
+            area = area_reg.async_create(room_name)
+
+        # 更新设备注册表中的区域
+        device_entry = dev_reg.async_get_device(
+            identifiers={(DOMAIN, f"device_{did}")}
+        )
+        if device_entry and device_entry.area_id != area.id:
+            dev_reg.async_update_device(device_entry.id, area_id=area.id)
+            _LOGGER.debug(f"设备 {device.get('deviceName', did)} → 区域 {room_name}")
 
     _LOGGER.info("Orvibo LAN Control 设置完成")
     return True

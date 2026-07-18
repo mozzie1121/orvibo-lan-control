@@ -146,13 +146,13 @@ class HttpsClient:
         """获取设备列表和网关信息。
 
         Returns:
-            (devices, statuses, gateways, gateway_ips, get_gateway_ip_for_device)
+            (devices, statuses, gateways, rooms, gateway_ips, get_gateway_ip_for_device)
         """
         async with aiohttp.ClientSession(
             connector=aiohttp.TCPConnector(ssl=False)
         ) as session:
             await self._ensure_token(session)
-            devices, statuses, gateways = await self._fetch_readtable(session)
+            devices, statuses, gateways, rooms = await self._fetch_readtable(session)
 
         # 建立 gatewayId → IP 映射
         gateway_ips = self._build_gateway_ip_map(gateways, devices)
@@ -167,13 +167,16 @@ class HttpsClient:
                     return ip
             return None
 
-        return devices, statuses, gateways, gateway_ips, get_gateway_ip_for_device
+        return devices, statuses, gateways, rooms, gateway_ips, get_gateway_ip_for_device
 
     async def _fetch_readtable(self, session: aiohttp.ClientSession):
         """获取完整设备列表（含网关信息）。
 
         通过 /v2/cmd/app/readtable API 获取。
         family_id 优先级：构造参数 > 环境变量 ORVIBO_FAMILY_ID > 空字符串
+
+        Returns:
+            (devices, statuses, gateways, rooms)
         """
         # family_id 获取策略
         family_id = self.family_id or os.environ.get("ORVIBO_FAMILY_ID", "")
@@ -215,25 +218,9 @@ class HttpsClient:
         devices = dd.get("device", [])
         statuses = {s["deviceId"]: s for s in dd.get("deviceStatus", [])}
         gateways = dd.get("gateway", [])
+        rooms = dd.get("room", [])
 
-        # 构建 roomId → roomName 映射表（readtable 顶层 room 数组）
-        rooms_data = dd.get("room", [])
-        room_names_map = {}
-        if isinstance(rooms_data, list):
-            for r in rooms_data:
-                rid = r.get("roomId") or r.get("roomID", "")
-                rname = r.get("roomName", "")
-                if rid and rname:
-                    room_names_map[rid] = rname
-
-        # 回填 roomName 到每个 device（优先 device 自身的 roomName，否则查映射表）
-        for d in devices:
-            if not d.get("roomName"):
-                rid = d.get("roomId") or d.get("roomID", "")
-                if rid in room_names_map:
-                    d["roomName"] = room_names_map[rid]
-
-        return devices, statuses, gateways
+        return devices, statuses, gateways, rooms
 
     def _build_gateway_ip_map(self, gateways: list, devices: list) -> dict:
         """建立 uid → IP 的映射。
