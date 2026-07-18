@@ -55,22 +55,22 @@ async def async_setup_entry(
             self._attr_unique_id = f"{DOMAIN}_light_{device_id}"
             self._attr_name = name
 
-            # 绑定到网关设备
+            # 每个设备独立注册为 HA 设备，via_device 指向网关
             uid = device.get("uid", "")
+            dev_info = {
+                "identifiers": {(DOMAIN, f"device_{device_id}")},
+                "name": device.get("deviceName", f"Light {device_id[:8]}"),
+                "manufacturer": MANUFACTURER,
+                "model": "Orvibo Light",
+                "sw_version": "1.0",
+            }
             if uid:
-                dev_info = {
-                    "identifiers": {(DOMAIN, f"gateway_{uid}")},
-                    "name": f"Orvibo Gateway",
-                    "manufacturer": MANUFACTURER,
-                    "model": "MixPad",
-                    "sw_version": "1.0",
-                    "connections": {("uid", uid)},
-                }
-                # 读取 readtable 的空间信息 → HA 区域
-                room_name = device.get("roomName") or device.get("room_name", "")
-                if room_name:
-                    dev_info["suggested_area"] = room_name
-                self._attr_device_info = dev_info
+                dev_info["via_device"] = (DOMAIN, f"gateway_{uid}")
+            # 读取 readtable 的空间信息 → HA 区域
+            room_name = device.get("roomName") or device.get("room_name", "")
+            if room_name:
+                dev_info["suggested_area"] = room_name
+            self._attr_device_info = dev_info
 
             cm_str = TYPE_COLOR_MODE_MAP.get(self._device_type, "onoff")
             if cm_str == "color_temp":

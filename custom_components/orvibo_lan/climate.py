@@ -48,21 +48,21 @@ async def async_setup_entry(
                                       HVACMode.FAN_ONLY, HVACMode.DRY]
             self._attr_fan_modes = ["auto", "low", "medium", "high"]
 
-            # 绑定到网关设备
+            # 每个设备独立注册为 HA 设备，via_device 指向网关
             uid = device.get("uid", "")
+            dev_info = {
+                "identifiers": {(DOMAIN, f"device_{device_id}")},
+                "name": device.get("deviceName", f"AC {device_id[:8]}"),
+                "manufacturer": MANUFACTURER,
+                "model": "Orvibo AC",
+                "sw_version": "1.0",
+            }
             if uid:
-                dev_info = {
-                    "identifiers": {(DOMAIN, f"gateway_{uid}")},
-                    "name": f"Orvibo Gateway",
-                    "manufacturer": MANUFACTURER,
-                    "model": "MixPad",
-                    "sw_version": "1.0",
-                    "connections": {("uid", uid)},
-                }
-                room_name = device.get("roomName") or device.get("room_name", "")
-                if room_name:
-                    dev_info["suggested_area"] = room_name
-                self._attr_device_info = dev_info
+                dev_info["via_device"] = (DOMAIN, f"gateway_{uid}")
+            room_name = device.get("roomName") or device.get("room_name", "")
+            if room_name:
+                dev_info["suggested_area"] = room_name
+            self._attr_device_info = dev_info
             self._attr_supported_features = (
                 ClimateEntityFeature.TARGET_TEMPERATURE |
                 ClimateEntityFeature.FAN_MODE
