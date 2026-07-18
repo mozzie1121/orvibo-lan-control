@@ -38,7 +38,7 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             hass,
             _LOGGER,
             name=f"{DOMAIN} coordinator",
-            update_interval=UPDATE_INTERVAL,
+            update_interval=None,  # 关闭轮询，全靠局域网 cmd=42 推送
         )
 
         self.username = username
@@ -86,12 +86,8 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         _LOGGER.info("Orvibo LAN Coordinator 初始化完成")
 
     async def _async_update_data(self) -> Dict[str, Any]:
-        """DataUpdateCoordinator 轮询回调：刷新设备状态。"""
-        try:
-            await self._refresh_devices_from_cloud()
-            return self.device_states
-        except Exception as e:
-            raise UpdateFailed(f"更新设备状态失败: {e}")
+        """DataUpdateCoordinator 轮询回调：禁用轮询，直接返回当前状态。"""
+        return self.device_states
 
     async def _refresh_devices_from_cloud(self):
         """从云端 API 拉取设备列表和状态。"""

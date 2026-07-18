@@ -32,7 +32,7 @@ TYPE_COLOR_MODE_MAP = {
 # 色温上限/下限（开尔文）
 COLOR_TEMP_RANGE = {
     "min": 2700,  # 370 mired
-    "max": 6500,  # 154 mired
+    "max": 6000,  # 167 mired
 }
 
 
