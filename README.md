@@ -8,11 +8,13 @@
 [![HACS Validation](https://github.com/mozzie1121/orvibo-lan-control/actions/workflows/hacs.yml/badge.svg)](https://github.com/mozzie1121/orvibo-lan-control/actions/workflows/hacs.yml)
 [![License: MIT](https://img.shields.io/github/license/mozzie1121/orvibo-lan-control)](LICENSE)
 
-通过局域网 TCP 8088 直接控制 Orvibo 设备，不依赖云端。
+通过局域网 TCP 8088 直接控制 Orvibo Zigbee 设备，不依赖云端。
 
 </div>
 
 ---
+
+> ⚠️ **重要说明**：本地控制仅支持通过 MixPad 网关接入的 **Zigbee 子设备**。WiFi 直连设备（如晾衣架等）尚不支持本地局域网控制。
 
 ## 项目结构
 
@@ -59,7 +61,8 @@ orvibo-lan-control/
 2. **TCP 连接网关** — 连接局域网内 MixPad 的 8088 端口
 3. **Hello/Login** — 获取 session key 后认证
 4. **发送控制** — AES-ECB 加密 JSON payload，通过 TCP 发送
-5. **心跳保活** — 每 60s 心跳包
+5. **状态推送** — 网关实时推送设备状态变化（cmd=42）
+6. **心跳保活** — 每 60s 心跳包
 
 ## 安装（Home Assistant）
 
@@ -90,20 +93,39 @@ cp -r custom_components/orvibo_lan /path/to/config/custom_components/
 | 密码 | ✅ | Orvibo 账号密码 |
 | 家庭 ID | ❌ | 可选，不填自动选择第一个家庭 |
 
-> 首次添加后自动拉取设备列表，无需额外配置。
+> 首次添加后自动拉取设备列表，无需额外配置。设备区域根据 App 中的房间设置自动同步。
 
 ## 支持的设备
 
-| 类型 | 名称 | 控制方式 | 状态 |
-|:----:|:-----|:---------|:----:|
-| 36 | 风机盘管（空调） | `on` / `off` / `mode setting` / `temperature setting` / `wind setting` | ✅ 实测通过 |
-| 34 | Zigbee 窗帘 | `open` / `close` / `stop` | ✅ |
-| 38 / 102 | 灯 | `on` / `off` | ✅ |
-| 501 | 平板灯/吸顶灯 | `set property` | ✅ |
-| 502 | 可调光灯 | `set property` + `brightness` | ✅ |
-| 503 | 色温灯带 | `set property` + `colorTemp` | ✅ |
-| 516 | 新风系统 | `set property` | 🔧 |
-| 52 | 电动晾衣架 | cmd=98 | 🔧 |
+> ⚠️ 仅支持通过 MixPad 网关接入的 **Zigbee 子设备**。WiFi 直连设备不支持本地控制。
+
+### ✅ 实测通过
+
+| 类别 | 型号/系列 | 功能 |
+|:----|:----------|:-----|
+| 🔘 **开关** | MixSwitch 系列（classic / bach / defy / gauss） | 开/关 |
+| ❄️ **空调** | AirMaster 系列空调网关 | 模式/温度/风速 |
+| 🪟 **窗帘** | 精筑系列 / 超静音系列 窗帘电机 | 开/关/停/位置 |
+| 💡 **筒射灯** | SoPro 系列（S3 / S5 / S10）智能筒射灯 | 开/关/亮度/色温 |
+| 💡 **调光灯** | 二代智能调光灯 | 开/关/亮度 |
+| 🌈 **灯带** | 智能灯带控制器 | 开/关/亮度/色温 |
+| 🌬️ **风扇** | AirMaster 系列新风控制器 | 开/关/风速 |
+
+### 🔧 待测试
+
+| 类别 | 型号/系列 | 功能 |
+|:----|:----------|:-----|
+| ⚡ **调光** | 0-10V 调光模块 | 待验证 |
+
+### ❌ 不支持（WiFi 直连设备）
+
+| 类别 | 原因 |
+|:----|:-----|
+| 电动晾衣架 | WiFi 直连，不走 MixPad 网关 |
+| 智能遥控器 | WiFi 直连，不走 MixPad 网关 |
+| 摄像头/门铃 | WiFi 直连 |
+| 梦幻帘一代/二代 | 协议不支持 |
+| 其他 WiFi 直连设备 | 协议不支持 |
 
 ## 技术细节
 
@@ -112,6 +134,7 @@ cp -r custom_components/orvibo_lan /path/to/config/custom_components/
 - **默认 key**：`khggd54865SNJHGF`
 - **心跳间隔**：60 秒
 - **控制 payload**：JSON，加密传输，`source: "ZhiJia365"`
+- **状态更新**：网关实时推送 cmd=42，含 ThingModel（statusType=501/502/503）和旧协议（statusType=2）两种格式
 
 ### 空调控制（type=36）
 
@@ -167,6 +190,12 @@ from lib.lan_controller import *
 - `value2`/`value3`/`value4` 应保留当前设备的模式/风速/温度状态（App 始终携带）
 
 ## 版本历史
+
+### v0.3.0（2026-07-18）
+- 局域网状态推送（cmd=42），实时光效不轮询
+- 设备区域自动同步（从 App 房间配置映射到 HA 区域）
+- 网关设备注册修复（via_device 兼容 HA 2025.12+）
+- 所有日志降级为 debug，减少日志量
 
 ### v0.2.0（2026-07-17）
 - 修复空调开机（改用 `order="on"`）
