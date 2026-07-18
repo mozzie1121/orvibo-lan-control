@@ -37,6 +37,7 @@ class LanConnection:
         self.session_key: Optional[bytes] = None
         self._keys: Dict[bytes, bytes] = {ID_UNSET: DEFAULT_KEY.encode()}
         self._heartbeat_task: Optional[asyncio.Task] = None
+        self._listen_task: Optional[asyncio.Task] = None
         self._username: Optional[str] = None
 
     async def connect(self, timeout: float = 5.0) -> bool:
@@ -57,6 +58,12 @@ class LanConnection:
             self._heartbeat_task.cancel()
             try:
                 await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+        if self._listen_task and not self._listen_task.done():
+            self._listen_task.cancel()
+            try:
+                await self._listen_task
             except asyncio.CancelledError:
                 pass
         if self.writer:
@@ -189,6 +196,40 @@ class LanConnection:
                     break
 
         self._heartbeat_task = asyncio.create_task(_hb_loop())
+
+    def start_listen_loop(self, callback):
+        """启动后台监听循环，持续读取网关推送的数据包。
+
+        Args:
+            callback: 收到 cmd=42 状态更新时的回调函数，参数为已解析的 payload dict
+        """
+        if self._listen_task and not self._listen_task.done():
+            return
+
+        async def _listen_loop():
+            while self.connected:
+                try:
+                    raw = await self._read_packet(timeout=30.0)
+                    if raw is None:
+                        continue
+                    result = parse_packet(raw, self._keys)
+                    if result is None:
+                        continue
+                    recv_cmd = result.get("cmd")
+                    if recv_cmd == CMD_STATE_UPDATE:
+                        _LOGGER.debug(f"收到 cmd=42 状态推送: {result.get('deviceId', '?')}")
+                        callback(result)
+                except asyncio.CancelledError:
+                    _LOGGER.debug(f"监听循环被取消 {self.host}")
+                    break
+                except Exception as e:
+                    _LOGGER.debug(f"监听循环异常 {self.host}: {e}")
+                    break
+
+            self.connected = False
+            _LOGGER.debug(f"监听循环结束 {self.host}")
+
+        self._listen_task = asyncio.create_task(_listen_loop())
 
     async def send_control(self, payload: dict) -> Optional[dict]:
         """发送 cmd=15 控制命令，并读取网关回复。
