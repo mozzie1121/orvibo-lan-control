@@ -33,9 +33,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     from homeassistant.helpers import device_registry as dr, area_registry as ar
     dev_reg = dr.async_get(hass)
     area_reg = ar.async_get(hass)
-    _LOGGER.warning(f"[注册网关] gateway_ips keys: {list(coordinator._gateway_ips.keys())}")
+    _LOGGER.debug(f"[注册网关] gateway_ips keys: {list(coordinator._gateway_ips.keys())}")
     for uid, ip in coordinator._gateway_ips.items():
-        _LOGGER.warning(f"[注册网关] 注册 gateway_{uid}")
+        _LOGGER.debug(f"[注册网关] 注册 gateway_{uid}")
         dev_reg.async_get_or_create(
             config_entry_id=entry.entry_id,
             identifiers={(DOMAIN, f"gateway_{uid}")},
@@ -70,7 +70,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
             dev_reg.async_update_device(device_entry.id, area_id=area.id)
             _LOGGER.debug(f"设备 {device.get('deviceName', did)} → 区域 {room_name}")
 
-    _LOGGER.info("Orvibo LAN Control 设置完成")
+    _LOGGER.debug("Orvibo LAN Control 设置完成")
     return True
 
 

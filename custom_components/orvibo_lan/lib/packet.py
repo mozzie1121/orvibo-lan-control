@@ -94,7 +94,7 @@ def parse_packet(data: bytes, keys: dict) -> dict:
     encrypted = data[42:]
 
     if _crc32(encrypted) != crc_recv:
-        _LOGGER.warning("CRC mismatch, ignoring")
+        _LOGGER.debug("CRC mismatch, ignoring")
         return None
 
     if ptype == PK_TYPE:

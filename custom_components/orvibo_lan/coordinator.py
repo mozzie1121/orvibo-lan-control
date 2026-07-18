@@ -66,7 +66,7 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
     async def _async_setup(self):
         """初始化：登录 + 获取设备列表 + 连接网关。"""
-        _LOGGER.info("初始化 Orvibo LAN Coordinator...")
+        _LOGGER.debug("初始化 Orvibo LAN Coordinator...")
 
         # 1. 登录（如果还没登录）
         success = await self.https_client.ensure_login()
@@ -85,7 +85,7 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             name=f"{DOMAIN}_gateway_discover",
         )
 
-        _LOGGER.info("Orvibo LAN Coordinator 初始化完成")
+        _LOGGER.debug("Orvibo LAN Coordinator 初始化完成")
 
     async def _async_update_data(self) -> Dict[str, Any]:
         """DataUpdateCoordinator 轮询回调：禁用轮询，直接返回当前状态。"""
@@ -125,7 +125,7 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             _LOGGER.debug(f"从云端获取到 {len(self.devices)} 个设备")
 
         except Exception as e:
-            _LOGGER.warning(f"从云端刷新设备失败: {e}")
+            _LOGGER.debug(f"从云端刷新设备失败: {e}")
 
     async def _connect_all_gateways(self):
         """连接所有已知网关。"""
@@ -141,11 +141,11 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                     # 启动状态监听循环，捕获 cmd=42 推送
                     # 监听循环在同个事件循环中运行，直接同步回调
                     conn.start_listen_loop(self._on_status_update)
-                    _LOGGER.info(f"网关 {ip} (uid={uid[:12]}...) 连接成功，状态监听已启动")
+                    _LOGGER.debug(f"网关 {ip} (uid={uid[:12]}...) 连接成功，状态监听已启动")
                 else:
-                    _LOGGER.warning(f"网关 {ip} (uid={uid[:12]}...) 连接失败")
+                    _LOGGER.debug(f"网关 {ip} (uid={uid[:12]}...) 连接失败")
             except Exception as e:
-                _LOGGER.warning(f"连接网关 {ip} 异常: {e}")
+                _LOGGER.debug(f"连接网关 {ip} 异常: {e}")
 
     async def _gateway_discover_loop(self):
         """定时 UDP 发现网关，IP 变化时重建连接。"""
@@ -162,7 +162,7 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 for uid, ip in discovered.items():
                     old_ip = self._gateway_ips.get(uid)
                     if old_ip != ip:
-                        _LOGGER.info(f"网关 {uid[:12]} IP 变化: {old_ip} → {ip}")
+                        _LOGGER.debug(f"网关 {uid[:12]} IP 变化: {old_ip} → {ip}")
                         self._gateway_ips[uid] = ip
 
                         # 断开旧连接
@@ -175,12 +175,12 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                         ok = await conn.connect_and_login(self.username, self.password)
                         if ok:
                             self._gateway_connections[uid] = conn
-                            _LOGGER.info(f"网关 {ip} 重新连接成功")
+                            _LOGGER.debug(f"网关 {ip} 重新连接成功")
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                _LOGGER.warning(f"网关发现循环异常: {e}")
+                _LOGGER.debug(f"网关发现循环异常: {e}")
 
     async def _udp_discover(self) -> Dict[str, str]:
         """UDP 广播发现网关，返回 {uid: ip}。"""
@@ -222,7 +222,7 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             trans.close()
             return proto.results
         except Exception as e:
-            _LOGGER.warning(f"UDP 发现异常: {e}")
+            _LOGGER.debug(f"UDP 发现异常: {e}")
             return {}
 
     def _on_status_update(self, payload: dict):

@@ -108,7 +108,7 @@ class HttpsClient:
                     if not self.family_id:
                         self.family_id = self.family_list[0]["familyId"]
         except Exception as e:
-            _LOGGER.warning(f"获取家庭列表失败: {e}")
+            _LOGGER.debug(f"获取家庭列表失败: {e}")
             self.family_list = []
 
     async def _ensure_token(self, session: aiohttp.ClientSession):
@@ -127,7 +127,7 @@ class HttpsClient:
         data = j.get("data", {})
         self.access_token = data.get("access_token")
         self.user_id = data.get("user_id")
-        _LOGGER.info(f"已获取 access_token, user_id={self.user_id}")
+        _LOGGER.debug(f"已获取 access_token, user_id={self.user_id}")
 
     @staticmethod
     def _create_sign(params: dict) -> str:
