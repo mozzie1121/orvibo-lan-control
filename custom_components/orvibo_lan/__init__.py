@@ -22,10 +22,13 @@ async def _async_assign_areas(hass: HomeAssistant, entry: ConfigEntry):
     from homeassistant.helpers import device_registry as dr, area_registry as ar
     dev_reg = dr.async_get(hass)
     area_reg = ar.async_get(hass)
-
+    # 分配区域
     for did, device in coordinator.devices.items():
         dt = coordinator.device_types.get(did, 0)
         if dt == 114:
+            continue
+        # 跳过无法本地控制的设备
+        if device.get("model", "") == "d4c7d528472e46edb694289300fa6fbb":
             continue
         room_name = coordinator.get_room_name(did)
         if not room_name:
