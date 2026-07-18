@@ -272,18 +272,18 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         # 避免高频推送挤爆 HA 事件循环
         if not hasattr(self, '_debounce_timer'):
             self._debounce_timer = None
+        if not hasattr(self, '_notify_task'):
+            self._notify_task = None
 
         if self._debounce_timer is not None:
             self._debounce_timer.cancel()
-
-        async def _notify():
             self._debounce_timer = None
-            try:
-                self.async_set_updated_data(self.device_states)
-            except Exception:
-                pass  # HA 可能已卸载
 
-        self._debounce_timer = self.hass.loop.call_later(0.2, lambda: asyncio.ensure_future(_notify()))
+        if self._notify_task is not None and not self._notify_task.done():
+            self._notify_task.cancel()
+            self._notify_task = None
+
+        self._notify_task = asyncio.create_task(self._debounced_notify())
 
     async def async_send_raw(self, device_id: str, payload: dict) -> bool:
         """通过 LAN 发送命令（不等待回复，适合空调等不回复的设备）。"""
@@ -421,3 +421,14 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
         room_name = device.get("roomName")
         return room_name if room_name else None
+
+    async def _debounced_notify(self):
+        """节流通知：等待 200ms 后触发 HA 状态更新。"""
+        try:
+            await asyncio.sleep(0.2)
+            self._debounce_timer = None
+            self.async_set_updated_data(self.device_states)
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
