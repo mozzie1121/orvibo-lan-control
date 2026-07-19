@@ -23,6 +23,7 @@ class OrviboLanConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._password: Optional[str] = None
         self._family_list: list = []
         self._family_name: str = ""
+        self._selected_family_id: Optional[str] = None
         self._user_id: str = ""
 
     async def async_step_user(
@@ -77,6 +78,7 @@ class OrviboLanConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             family_id = user_input.get(CONF_FAMILY_ID)
             if family_id:
+                self._selected_family_id = family_id
                 return await self._create_entry()
 
         family_choices = {
@@ -93,9 +95,7 @@ class OrviboLanConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _create_entry(self) -> FlowResult:
-        family_id = None
-        if self._family_list:
-            family_id = self._family_list[0]["familyId"]
+        family_id = self._selected_family_id or (self._family_list[0]["familyId"] if self._family_list else None)
 
         await self.async_set_unique_id(self._user_id)
         self._abort_if_unique_id_configured()

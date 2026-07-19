@@ -13,6 +13,7 @@ ha_modules = [
     "homeassistant", "homeassistant.core", "homeassistant.helpers",
     "homeassistant.exceptions", "homeassistant.helpers.update_coordinator",
     "homeassistant.const", "homeassistant.config_entries",
+    "homeassistant.data_entry_flow",
 ]
 for name in ha_modules:
     sys.modules[name] = mock.MagicMock()
