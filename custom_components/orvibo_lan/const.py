@@ -8,8 +8,9 @@ DOMAIN = "orvibo_lan"
 MANUFACTURER = "ORVIBO"
 
 CONF_USERNAME = "username"
-CONF_PASSWORD = "password"
+CONF_PASSWORD="***"
 CONF_FAMILY_ID = "family_id"
+CONF_SELECTED_DEVICE_IDS = "selected_device_ids"
 
 # ---- 更新间隔 ----
 UPDATE_INTERVAL = timedelta(seconds=30)      # 从云端轮询状态

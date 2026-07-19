@@ -193,11 +193,15 @@ async def async_setup_entry(
             await self.coordinator.async_request_refresh()
 
     coordinator: OrviboLanCoordinator = hass.data[DOMAIN][entry.entry_id]
+    from .selection import selected_device_ids
+    selected_ids = selected_device_ids(entry.options, coordinator.devices)
     entities = []
 
     from .const import HIDDEN_TYPES
 
     for did, device in coordinator.devices.items():
+        if did not in selected_ids:
+            continue
         dt = coordinator.device_types.get(did, 0)
         if dt not in (36, 81):
             continue
