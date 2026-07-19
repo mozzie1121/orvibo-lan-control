@@ -38,12 +38,22 @@ DEVICE_TYPE_MAP = {
     503: DEVICE_TYPE_LIGHT,         # 色温灯带
     516: DEVICE_TYPE_FAN,           # 新风系统
     0: DEVICE_TYPE_LIGHT,           # Zigbee 调光灯
+    # ---- 传感器 ----
     22: DEVICE_TYPE_SENSOR,         # 温湿度传感器
     23: DEVICE_TYPE_SENSOR,         # 温湿度传感器
+    25: DEVICE_TYPE_SENSOR,         # 可燃气体探测器
+    26: DEVICE_TYPE_SENSOR,         # 人体传感器
+    27: DEVICE_TYPE_SENSOR,         # 烟雾传感器
+    46: DEVICE_TYPE_SENSOR,         # 门窗传感器
+    54: DEVICE_TYPE_SENSOR,         # 水浸探测器
+    56: DEVICE_TYPE_SENSOR,         # 紧急按钮
+    300: DEVICE_TYPE_SENSOR,        # 门锁/温湿度传感器
+    522: DEVICE_TYPE_SENSOR,        # 门锁 V5
+    107: DEVICE_TYPE_SENSOR,        # 门锁 T1
 }
 
-# 不暴露为实体的隐藏设备类型
-HIDDEN_TYPES = {114, 511, 518, 150, 14, 135, 136, 137, 143}
+# 不暴露为实体的隐藏设备类型（MixPad、开关底座、红外遥控、摄像头、音乐主机、射频类）
+HIDDEN_TYPES = {114, 511, 518, 150, 14, 128, 135, 136, 137, 143, 155, 115}
 
 # ---- 支持的平台 ----
 PLATFORMS = ["light", "cover", "climate", "fan", "sensor"]
