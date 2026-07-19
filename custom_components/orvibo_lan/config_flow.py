@@ -1,8 +1,10 @@
 """ORVIBO LAN Control 配置流：输入账号→选择家庭→选择设备→完成。"""
 
+from __future__ import annotations
+
 import logging
 import re
-from typing import Optional
+from typing import Any, Optional
 
 import voluptuous as vol
 
@@ -11,7 +13,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
-from .const import DOMAIN, CONF_USERNAME, CONF_PASSWORD, CONF_FAMILY_ID, CONF_SELECTED_DEVICE_IDS
+from .const import (
+    DOMAIN,
+    CONF_USERNAME,
+    CONF_PASSWORD,
+    CONF_FAMILY_ID,
+    CONF_SELECTED_DEVICE_IDS,
+)
 from .selection import selected_device_ids
 
 _LOGGER = logging.getLogger(__name__)
@@ -24,8 +32,8 @@ def _device_label(device_id: str, name: str, room: str) -> str:
     return name or device_id[-8:]
 
 
-def _device_schema(devices: list[dict]) -> vol.Schema:
-    """多选设备表单。"""
+def _device_schema_with_default(devices: list[dict[str, Any]], default_ids: list[str]) -> vol.Schema:
+    """多选设备表单（带自定义默认值）。"""
     options = [
         selector.SelectOptionDict(
             value=str(dev["deviceId"]),
@@ -37,8 +45,6 @@ def _device_schema(devices: list[dict]) -> vol.Schema:
         )
         for dev in devices
     ]
-    # 默认全选
-    default_ids = [str(dev["deviceId"]) for dev in devices]
     return vol.Schema({
         vol.Required(CONF_SELECTED_DEVICE_IDS, default=default_ids): (
             selector.SelectSelector(
@@ -48,25 +54,37 @@ def _device_schema(devices: list[dict]) -> vol.Schema:
                     mode=selector.SelectSelectorMode.LIST,
                 )
             )
-        )
+        ),
     })
+
+
+def _device_schema(devices: list[dict[str, Any]]) -> vol.Schema:
+    """多选设备表单（默认全选）。"""
+    default_ids = [str(dev["deviceId"]) for dev in devices]
+    return _device_schema_with_default(devices, default_ids)
 
 
 class OrviboLanConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._username: Optional[str] = None
         self._password: Optional[str] = None
         self._family_list: list = []
         self._family_name: str = ""
         self._selected_family_id: Optional[str] = None
         self._user_id: str = ""
-        self._devices: list[dict] = []
+        self._devices: list[dict[str, Any]] = []
         self._https_client = None
 
+    @staticmethod
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
+        return OrviboLanOptionsFlow()
+
     async def async_step_user(
-        self, user_input: Optional[dict] = None
+        self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         errors: dict[str, str] = {}
 
@@ -117,7 +135,7 @@ class OrviboLanConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_select_family(
-        self, user_input: Optional[dict] = None
+        self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         errors: dict[str, str] = {}
 
@@ -145,22 +163,19 @@ class OrviboLanConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_devices(
-        self, user_input: Optional[dict] = None
+        self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         errors: dict[str, str] = {}
 
         if not self._devices:
             try:
-                # 设置家庭 ID 后重新获取设备列表（带家庭筛选）
                 client = self._https_client
                 if client and self._selected_family_id:
                     client.family_id = self._selected_family_id
                 devices, _, _, rooms, _, _ = await client.fetch_devices()
 
-                # 建立房间名映射
                 room_names = {r["roomId"]: r.get("roomName", "") for r in rooms}
 
-                # 过滤 WiFi 设备和隐藏设备，只展示 LAN 可控设备
                 from .const import DEVICE_TYPE_MAP, HIDDEN_TYPES
                 _LAN_TYPES = set(DEVICE_TYPE_MAP.keys()) - HIDDEN_TYPES
 
@@ -174,7 +189,6 @@ class OrviboLanConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             continue
                     if dt not in _LAN_TYPES:
                         continue
-                    # 添加房间名
                     room_id = d.get("roomId", "")
                     d["roomName"] = room_names.get(room_id, "")
                     self._devices.append(d)
@@ -188,8 +202,8 @@ class OrviboLanConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None and CONF_SELECTED_DEVICE_IDS in user_input:
             available = {str(dev["deviceId"]) for dev in self._devices}
-            requested = {str(device_id) for device_id in user_input[CONF_SELECTED_DEVICE_IDS]}
-            intersection = requested & available
+            selected_raw = {str(did) for did in user_input[CONF_SELECTED_DEVICE_IDS]}
+            intersection = selected_raw & available
             selected_ids = [
                 str(dev["deviceId"])
                 for dev in self._devices
@@ -224,4 +238,93 @@ class OrviboLanConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             options={
                 CONF_SELECTED_DEVICE_IDS: selected_ids,
             },
+        )
+
+
+class OrviboLanOptionsFlow(config_entries.OptionsFlow):
+    def __init__(self) -> None:
+        self._devices: list[dict[str, Any]] = []
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        return await self.async_step_devices(user_input)
+
+    async def async_step_devices(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        errors: dict[str, str] = {}
+
+        if not self._devices:
+            try:
+                from .lib.https_client import HttpsClient
+
+                username = self.config_entry.data[CONF_USERNAME]
+                password = self.config_entry.data[CONF_PASSWORD]
+                family_id = self.config_entry.data.get(CONF_FAMILY_ID)
+
+                client = HttpsClient(username, password)
+                success = await client.ensure_login()
+                if not success:
+                    errors["base"] = "auth_failed"
+                else:
+                    if family_id:
+                        client.family_id = family_id
+                    devices, _, _, rooms, _, _ = await client.fetch_devices()
+
+                    room_names = {r["roomId"]: r.get("roomName", "") for r in rooms}
+
+                    from .const import DEVICE_TYPE_MAP, HIDDEN_TYPES
+                    _LAN_TYPES = set(DEVICE_TYPE_MAP.keys()) - HIDDEN_TYPES
+
+                    self._devices = []
+                    for d in devices:
+                        dt = d.get("deviceType", 0)
+                        if isinstance(dt, str):
+                            try:
+                                dt = int(dt)
+                            except (ValueError, TypeError):
+                                continue
+                        if dt not in _LAN_TYPES:
+                            continue
+                        room_id = d.get("roomId", "")
+                        d["roomName"] = room_names.get(room_id, "")
+                        self._devices.append(d)
+            except Exception as e:
+                _LOGGER.error(f"获取设备列表失败: {e}", exc_info=True)
+                errors["base"] = "cannot_connect"
+
+        if not self._devices:
+            if not errors:
+                errors["base"] = "no_devices"
+
+        if user_input is not None and CONF_SELECTED_DEVICE_IDS in user_input:
+            available = {str(dev["deviceId"]) for dev in self._devices}
+            selected_raw = {str(did) for did in user_input[CONF_SELECTED_DEVICE_IDS]}
+            intersection = selected_raw & available
+            selected_ids = [
+                str(dev["deviceId"])
+                for dev in self._devices
+                if str(dev["deviceId"]) in intersection
+            ]
+            if not selected_ids:
+                errors["base"] = "no_devices_selected"
+            else:
+                return self.async_create_entry(
+                    title="",
+                    data={
+                        CONF_SELECTED_DEVICE_IDS: selected_ids,
+                    },
+                )
+
+        current_selected = selected_device_ids(
+            self.config_entry.options,
+            {str(dev["deviceId"]) for dev in self._devices},
+        )
+        current_selected_list = sorted(list(current_selected))
+
+        return self.async_show_form(
+            step_id="devices",
+            data_schema=_device_schema_with_default(self._devices, current_selected_list),
+            errors=errors,
         )

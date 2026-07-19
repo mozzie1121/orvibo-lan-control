@@ -3,9 +3,9 @@
     "step": {
       "user": {
         "title": "Orvibo 局域网控制",
-        "description": "输入您的 Orvibo 账号（手机号）",
+        "description": "输入您的智家365账号（手机号或邮箱）",
         "data": {
-          "username": "手机号",
+          "username": "手机号或邮箱",
           "password": "密码"
         }
       },
@@ -15,14 +15,45 @@
         "data": {
           "family_id": "家庭"
         }
+      },
+      "devices": {
+        "title": "选择设备",
+        "description": "选择需要通过局域网控制的设备（默认全选）",
+        "data": {
+          "selected_device_ids": "选择设备"
+        }
       }
     },
     "error": {
       "auth_failed": "登录失败，请检查账号密码",
-      "empty_username_or_password": "手机号和密码不能为空"
+      "empty_username_or_password": "手机号和密码不能为空",
+      "cannot_connect": "无法连接到 ORVIBO 服务器",
+      "no_devices": "该家庭下没有可控制的设备",
+      "no_devices_selected": "请至少选择一个设备"
     },
     "abort": {
       "already_configured": "该账号已配置"
+    }
+  },
+  "options": {
+    "step": {
+      "devices": {
+        "title": "选择设备",
+        "description": "选择需要通过局域网控制的设备",
+        "data": {
+          "selected_device_ids": "选择设备"
+        }
+      },
+      "init": {
+        "title": "选择设备",
+        "description": "选择需要通过局域网控制的设备",
+        "data": {
+          "selected_device_ids": "选择设备"
+        }
+      }
+    },
+    "error": {
+      "no_devices_selected": "请至少选择一个设备"
     }
   }
 }

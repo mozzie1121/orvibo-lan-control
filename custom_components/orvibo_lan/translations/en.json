@@ -15,14 +15,45 @@
         "data": {
           "family_id": "Family"
         }
+      },
+      "devices": {
+        "title": "Select Devices",
+        "description": "Select devices to control via LAN (all selected by default)",
+        "data": {
+          "selected_device_ids": "Select Devices"
+        }
       }
     },
     "error": {
       "auth_failed": "Login failed, check your credentials",
-      "empty_username_or_password": "Phone number and password cannot be empty"
+      "empty_username_or_password": "Phone number and password cannot be empty",
+      "cannot_connect": "Cannot connect to ORVIBO server",
+      "no_devices": "No controllable devices in this family",
+      "no_devices_selected": "Please select at least one device"
     },
     "abort": {
       "already_configured": "This account is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "devices": {
+        "title": "Select Devices",
+        "description": "Select devices to control via LAN",
+        "data": {
+          "selected_device_ids": "Select Devices"
+        }
+      },
+      "init": {
+        "title": "Select Devices",
+        "description": "Select devices to control via LAN",
+        "data": {
+          "selected_device_ids": "Select Devices"
+        }
+      }
+    },
+    "error": {
+      "no_devices_selected": "Please select at least one device"
     }
   }
 }
