@@ -137,7 +137,6 @@ class OrviboLanTemperatureSensor(CoordinatorEntity, SensorEntity):
         st = self.coordinator.get_device_state(self._device_id)
         if not st:
             return None
-        # 先看解析后字段，再看原始 value1
         return _get_value(st, "temperature") or _get_value(st, "value1")
 
 

@@ -57,4 +57,4 @@ DEVICE_TYPE_MAP = {
 HIDDEN_TYPES = {114, 511, 518, 150, 14, 128, 135, 136, 137, 143, 155, 115}
 
 # ---- 支持的平台 ----
-PLATFORMS = ["light", "cover", "climate", "fan", "sensor"]
+PLATFORMS = ["light", "cover", "climate", "fan", "sensor", "binary_sensor"]

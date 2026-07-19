@@ -175,6 +175,10 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
             _LOGGER.debug(f"从云端获取到 {len(self.devices)} 个设备")
 
+            # 初始化传感器状态（从云端 deviceStatus 的 value1-value4 解析触发状态/电量/温湿度）
+            for did, state in self.device_states.items():
+                self._parse_sensor_state(state, did)
+
         except Exception as e:
             _LOGGER.debug(f"从云端刷新设备失败: {e}")
 
@@ -389,6 +393,9 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         if changed:
             _LOGGER.debug(f"cmd=42 更新: {did[:16]}.. props={payload.get('value1', payload.get('properties', '?'))}")
 
+        # 解析传感器状态（门窗/人体/烟雾/燃气/水浸/紧急按钮/温湿度）
+        self._parse_sensor_state(old_state, did)
+
         # 节流通知：200ms 内多次 cmd=42 合并为一次通知
         # 避免高频推送挤爆 HA 事件循环
         if self._debounce_timer is not None:
@@ -553,6 +560,65 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
 
         room_name = device.get("roomName")
         return room_name if room_name else None
+
+    def _parse_sensor_state(self, state: dict, device_id: str) -> None:
+        """解析传感器触发状态（参照 orvibohomebridge coordinator 的 _parse_status_* 系列方法）。
+
+        传感器数据来自 TCP cmd=42 推送（value1-value4 格式），在 _on_status_update 中被调用。
+        dataType 格式约定：
+        - 门窗(46): value1=1 开, value4=电量
+        - 人体(26): value3=1 触发, value4=电量
+        - 烟雾(27)/燃气(25)/水浸(54): value1=1 告警, value4=电量
+        - 紧急按钮(56): value1=1 按下, value4=电量
+        - 温湿度(22/23): value1=温度, value2=湿度, value4=电量
+        """
+        dt = self.device_types.get(device_id, 0)
+
+        # 从 state 取原始值，兼容 int/str
+        def _int(v):
+            if v is None:
+                return None
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return None
+
+        v1 = _int(state.get("value1"))
+        v2 = _int(state.get("value2"))
+        v3 = _int(state.get("value3"))
+        v4 = _int(state.get("value4"))
+
+        if dt == 46:  # 门窗传感器
+            if v1 is not None:
+                state["door_state"] = v1 == 1
+
+        elif dt == 26:  # 人体传感器
+            if v3 is not None:
+                state["motion_detected"] = v3 == 1
+
+        elif dt in (27, 25, 54):  # 烟雾/燃气/水浸
+            if v1 is not None:
+                if dt == 27:
+                    state["smoke_detected"] = v1 == 1
+                elif dt == 25:
+                    state["gas_detected"] = v1 == 1
+                elif dt == 54:
+                    state["water_leak_detected"] = v1 == 1
+
+        elif dt == 56:  # 紧急按钮
+            if v1 is not None:
+                state["emergency_state"] = v1 == 1
+
+        # 所有传感器：value4 为电量百分比
+        if v4 is not None and 0 <= v4 <= 100:
+            state["battery"] = v4
+
+        # 温湿度：value1=温度, value2=湿度（标量或编码值）
+        if dt in (22, 23):
+            if v1 is not None:
+                state["temperature"] = float(v1)
+            if v2 is not None:
+                state["humidity"] = float(v2)
 
     async def _debounced_notify(self):
         """节流通知：等待 200ms 后触发 HA 状态更新。"""
