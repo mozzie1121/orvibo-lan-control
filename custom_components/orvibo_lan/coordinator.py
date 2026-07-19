@@ -473,7 +473,7 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         try:
             # 所有设备统一走 send_control
             result = await conn.send_control(payload)
-            if dt == 36:
+            if dt in (36, 81):
                 # 空调即使没回复也算成功
                 return True
             return result is not None and result.get("status") == 0

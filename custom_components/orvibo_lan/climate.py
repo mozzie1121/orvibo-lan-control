@@ -199,7 +199,7 @@ async def async_setup_entry(
 
     for did, device in coordinator.devices.items():
         dt = coordinator.device_types.get(did, 0)
-        if dt != 36:
+        if dt not in (36, 81):
             continue
         if dt in HIDDEN_TYPES:
             continue

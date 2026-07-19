@@ -27,20 +27,23 @@ DEVICE_TYPE_FAN = "fan"
 DEVICE_TYPE_MAP = {
     1: DEVICE_TYPE_LIGHT,           # 简版灯
     34: DEVICE_TYPE_COVER,          # 窗帘
+    35: DEVICE_TYPE_COVER,          # 卷帘
     36: DEVICE_TYPE_CLIMATE,        # 空调
     38: DEVICE_TYPE_LIGHT,          # 调光调色灯
     52: "clothes_horse",            # 晾衣架（后续通过 service 实现）
+    81: DEVICE_TYPE_CLIMATE,        # 空调/风机盘管（同 type=36）
     102: DEVICE_TYPE_LIGHT,         # 灯
     501: DEVICE_TYPE_LIGHT,         # 单色灯
     502: DEVICE_TYPE_LIGHT,         # 可调光灯
     503: DEVICE_TYPE_LIGHT,         # 色温灯带
     516: DEVICE_TYPE_FAN,           # 新风系统
     0: DEVICE_TYPE_LIGHT,           # Zigbee 调光灯
-    81: DEVICE_TYPE_FAN,            # AirMaster 新风
+    22: DEVICE_TYPE_SENSOR,         # 温湿度传感器
+    23: DEVICE_TYPE_SENSOR,         # 温湿度传感器
 }
 
 # 不暴露为实体的隐藏设备类型
 HIDDEN_TYPES = {114, 511, 518, 150, 14, 135, 136, 137, 143}
 
 # ---- 支持的平台 ----
-PLATFORMS = ["light", "cover", "climate", "fan"]
+PLATFORMS = ["light", "cover", "climate", "fan", "sensor"]

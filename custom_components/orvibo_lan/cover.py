@@ -27,14 +27,20 @@ async def async_setup_entry(
 
         _attr_has_entity_name = True
 
-        def __init__(self, coordinator, device_id, device):
+        def __init__(self, coordinator, device_id, device, device_type=34):
             super().__init__(coordinator)
             self._device_id = device_id
             self._device = device
+            self._device_type = device_type
             name = device.get("deviceName", f"Cover {device_id[:8]}")
             self._attr_unique_id = f"{DOMAIN}_cover_{device_id}"
             self._attr_name = name
-            self._attr_device_class = CoverDeviceClass.CURTAIN
+            # type=35 卷帘使用 SHUTTER 图标
+            if device_type == 35:
+                self._attr_device_class = CoverDeviceClass.SHUTTER
+                self._attr_icon = "mdi:roller-shade"
+            else:
+                self._attr_device_class = CoverDeviceClass.CURTAIN
 
             # 每个设备独立注册为 HA 设备，via_device 指向网关
             uid = device.get("uid", "")
@@ -105,12 +111,12 @@ async def async_setup_entry(
 
     for did, device in coordinator.devices.items():
         dt = coordinator.device_types.get(did, 0)
-        if dt != 34:
+        if dt not in (34, 35):
             continue
         if dt in HIDDEN_TYPES:
             continue
 
-        entities.append(OrviboLanCover(coordinator, did, device))
+        entities.append(OrviboLanCover(coordinator, did, device, dt))
 
     if entities:
         async_add_entities(entities)
