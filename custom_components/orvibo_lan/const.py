@@ -8,7 +8,7 @@ DOMAIN = "orvibo_lan"
 MANUFACTURER = "ORVIBO"
 
 CONF_USERNAME = "username"
-CONF_PASSWORD="***"
+CONF_PASSWORD = "password"
 CONF_FAMILY_ID = "family_id"
 CONF_SELECTED_DEVICE_IDS = "selected_device_ids"
 
