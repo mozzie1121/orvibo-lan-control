@@ -172,12 +172,14 @@ class OrviboLanConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 client = self._https_client
                 if client and self._selected_family_id:
                     client.family_id = self._selected_family_id
-                devices, _, _, rooms, _, _ = await client.fetch_devices()
+                devices, _, _, rooms, gateway_ips, _ = await client.fetch_devices()
 
                 room_names = {r["roomId"]: r.get("roomName", "") for r in rooms}
 
                 from .const import DEVICE_TYPE_MAP, HIDDEN_TYPES
                 _LAN_TYPES = set(DEVICE_TYPE_MAP.keys()) - HIDDEN_TYPES
+
+                _gateway_uids = set(gateway_ips.keys())
 
                 self._devices = []
                 for d in devices:
@@ -188,6 +190,10 @@ class OrviboLanConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         except (ValueError, TypeError):
                             continue
                     if dt not in _LAN_TYPES:
+                        continue
+                    # 过滤 Wifi 直连设备：uid 有值但不在任何 MixPad 网关 uid 中
+                    dev_uid = d.get("uid", "")
+                    if dev_uid and dev_uid not in _gateway_uids:
                         continue
                     room_id = d.get("roomId", "")
                     d["roomName"] = room_names.get(room_id, "")
@@ -270,26 +276,32 @@ class OrviboLanOptionsFlow(config_entries.OptionsFlow):
                 else:
                     if family_id:
                         client.family_id = family_id
-                    devices, _, _, rooms, _, _ = await client.fetch_devices()
+                    devices, _, _, rooms, gateway_ips, _ = await client.fetch_devices()
 
                     room_names = {r["roomId"]: r.get("roomName", "") for r in rooms}
 
                     from .const import DEVICE_TYPE_MAP, HIDDEN_TYPES
                     _LAN_TYPES = set(DEVICE_TYPE_MAP.keys()) - HIDDEN_TYPES
 
-                    self._devices = []
-                    for d in devices:
-                        dt = d.get("deviceType", 0)
-                        if isinstance(dt, str):
-                            try:
-                                dt = int(dt)
-                            except (ValueError, TypeError):
-                                continue
-                        if dt not in _LAN_TYPES:
+                _gateway_uids = set(gateway_ips.keys())
+
+                self._devices = []
+                for d in devices:
+                    dt = d.get("deviceType", 0)
+                    if isinstance(dt, str):
+                        try:
+                            dt = int(dt)
+                        except (ValueError, TypeError):
                             continue
-                        room_id = d.get("roomId", "")
-                        d["roomName"] = room_names.get(room_id, "")
-                        self._devices.append(d)
+                    if dt not in _LAN_TYPES:
+                        continue
+                    # 过滤 Wifi 直连设备：uid 有值但不在任何 MixPad 网关 uid 中
+                    dev_uid = d.get("uid", "")
+                    if dev_uid and dev_uid not in _gateway_uids:
+                        continue
+                    room_id = d.get("roomId", "")
+                    d["roomName"] = room_names.get(room_id, "")
+                    self._devices.append(d)
             except Exception as e:
                 _LOGGER.error(f"获取设备列表失败: {e}", exc_info=True)
                 errors["base"] = "cannot_connect"

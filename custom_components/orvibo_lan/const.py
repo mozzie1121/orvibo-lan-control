@@ -54,6 +54,8 @@ DEVICE_TYPE_MAP = {
 }
 
 # 不暴露为实体的隐藏设备类型（MixPad、开关底座、红外遥控、摄像头、音乐主机、射频类）
+# 注意：Wifi 直连设备（如 type=52 晾衣架、type=107/522 Wifi 门锁等）不在本表过滤，
+# 而是由 coordinator.py 和 config_flow.py 通过设备 uid 是否匹配 MixPad 网关 uid 来动态剔除。
 HIDDEN_TYPES = {114, 511, 518, 150, 14, 128, 135, 136, 137, 143, 155, 115}
 
 # ---- 支持的平台 ----

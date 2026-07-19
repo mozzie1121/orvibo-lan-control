@@ -149,8 +149,17 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             new_device_states = {}
             new_device_types = {}
 
+            # 收集 MixPad 网关 uid 集合
+            # gateway_ips 的 key 就是已被识别为 MixPad 网关的 uid
+            # 设备的 uid 与其所属网关的 uid 相同；Wifi 直连设备的 uid 不匹配任何网关
+            _gateway_uids = set(gateway_ips.keys())
+
             for d in devices:
                 did = d["deviceId"]
+                # 过滤 Wifi 设备：设备的 uid 有值但不在任何 MixPad 网关 uid 中
+                dev_uid = d.get("uid", "")
+                if dev_uid and dev_uid not in _gateway_uids:
+                    continue
                 new_devices[did] = d
                 dt_raw = d.get("deviceType", 0)
                 new_device_types[did] = int(dt_raw) if isinstance(dt_raw, str) else dt_raw
