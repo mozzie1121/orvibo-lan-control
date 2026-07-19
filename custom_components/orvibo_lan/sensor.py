@@ -8,7 +8,7 @@
 - 46: 门窗传感器 → 电量
 - 54: 水浸探测器 → 电量
 - 56: 紧急按钮 → 电量
-- 300: 门锁/温湿度 → 电量（部分有温度/湿度）
+- 300: 门锁/温湿度 → 温度+湿度+电量
 - 522/107: 门锁 → 干电池电量 + 锂电池电量
 """
 
@@ -245,7 +245,9 @@ _SENSOR_FACTORIES = {
         OrviboLanBatterySensor(c, did, d, "Orvibo Emergency Button", f"emergency_battery_{did}"),
     ]),
     300: ("Orvibo Sensor", lambda c, did, d: [
-        OrviboLanBatterySensor(c, did, d, "Orvibo Sensor", f"sensor_battery_{did}"),
+        OrviboLanTemperatureSensor(c, did, d),
+        OrviboLanHumiditySensor(c, did, d),
+        OrviboLanBatterySensor(c, did, d, "Orvibo Sensor", f"th_battery_{did}"),
     ]),
     522: ("Orvibo Door Lock", lambda c, did, d: [
         OrviboLanDryBatterySensor(c, did, d),

@@ -620,6 +620,43 @@ class OrviboLanCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             if v2 is not None:
                 state["humidity"] = float(v2)
 
+        # type=300 (ThingModel 温湿度/门锁)：从 properties 解析温度/湿度/电量
+        if dt == 300:
+            props = state.get("properties", {})
+            if isinstance(props, dict):
+                temp_obj = props.get("temperature", {})
+                if isinstance(temp_obj, dict):
+                    temp = temp_obj.get("value")
+                else:
+                    temp = temp_obj
+                if temp is not None:
+                    try:
+                        state["temperature"] = float(temp)
+                    except (TypeError, ValueError):
+                        state["temperature"] = temp
+
+                hum_obj = props.get("humidity", {})
+                if isinstance(hum_obj, dict):
+                    hum = hum_obj.get("value")
+                else:
+                    hum = hum_obj
+                if hum is not None:
+                    try:
+                        state["humidity"] = float(hum)
+                    except (TypeError, ValueError):
+                        state["humidity"] = hum
+
+                bat_obj = props.get("battery", {})
+                if isinstance(bat_obj, dict):
+                    bat = bat_obj.get("power") or bat_obj.get("value")
+                else:
+                    bat = bat_obj
+                if bat is not None:
+                    try:
+                        state["battery"] = int(float(bat))
+                    except (TypeError, ValueError):
+                        state["battery"] = bat
+
     async def _debounced_notify(self):
         """节流通知：等待 200ms 后触发 HA 状态更新。"""
         try:
