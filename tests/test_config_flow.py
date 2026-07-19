@@ -95,38 +95,48 @@ class TestFamilySelectionDataLogic(unittest.TestCase):
 
         This exactly mirrors the data flow:
         async_step_select_family → _selected_family_id = family_id
-        → _create_entry → family_id = _selected_family_id or fallback
+        → update _family_name → _create_entry
         """
         # Step 1: user selects family B
         user_input = {"family_id": "fam-002"}
         _selected_family_id: str | None = None
+        _family_name = "家庭A"  # was set in async_step_user
+        _family_list = FAKE_FAMILIES
 
         family_id_from_step = user_input.get("family_id")
         if family_id_from_step:
             _selected_family_id = family_id_from_step
+            # Update family name to match selection
+            for f in _family_list:
+                if f["familyId"] == family_id_from_step:
+                    _family_name = f.get("familyName", "")
+                    break
 
         self.assertEqual(_selected_family_id, "fam-002")
+        self.assertEqual(_family_name, "家庭B")  # was "家庭A", now "家庭B"
 
-        # Step 2: _create_entry uses the stored value
-        _family_list = FAKE_FAMILIES
+        # Step 2: _create_entry uses the stored values
         family_id = _selected_family_id or (
             _family_list[0]["familyId"] if _family_list else None
         )
         self.assertEqual(family_id, "fam-002")
 
-        # Step 3: Goes into entry.data
-        data = {"family_id": family_id}
-        self.assertEqual(data["family_id"], "fam-002")
+        # Step 3: entry title uses correct family name
+        title = f"13800138000 - {_family_name}"
+        self.assertEqual(title, "13800138000 - 家庭B")
 
-    def test_single_family_skip_selection(self):
-        """Only one family → goes directly to _create_entry, uses first family."""
-        _selected_family_id = None
+    def test_single_family_no_selection_keeps_first_name(self):
+        """Only one family → _family_name stays as first family's name."""
+        _family_name = "家庭A"
         _family_list = [FAKE_FAMILIES[0]]
+        _selected_family_id = None
 
-        # This path doesn't go through async_step_select_family
+        # No selection step happens, goes straight to _create_entry
         family_id = _selected_family_id or (
             _family_list[0]["familyId"] if _family_list else None
         )
+        title = f"13800138000 - {_family_name}"
+        self.assertEqual(title, "13800138000 - 家庭A")
         self.assertEqual(family_id, "fam-001")
 
 

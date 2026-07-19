@@ -79,6 +79,11 @@ class OrviboLanConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             family_id = user_input.get(CONF_FAMILY_ID)
             if family_id:
                 self._selected_family_id = family_id
+                # 更新家庭名称
+                for f in self._family_list:
+                    if f["familyId"] == family_id:
+                        self._family_name = f.get("familyName", "")
+                        break
                 return await self._create_entry()
 
         family_choices = {
