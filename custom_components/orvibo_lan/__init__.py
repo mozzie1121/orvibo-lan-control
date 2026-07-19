@@ -4,10 +4,10 @@ import asyncio
 import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.const import CONF_USERNAME, CONF_PASSWORD, EVENT_HOMEASSISTANT_STARTED
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import DOMAIN, CONF_FAMILY_ID, PLATFORMS, MANUFACTURER
+from .const import DOMAIN, CONF_FAMILY_ID, CONF_USERNAME, CONF_PASSWORD, PLATFORMS, MANUFACTURER
 from .coordinator import OrviboLanCoordinator
 
 _LOGGER = logging.getLogger(__name__)
