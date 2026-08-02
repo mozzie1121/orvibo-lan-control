@@ -294,7 +294,7 @@ class OrviboLanCoordinator(DataUpdateCoordinator[dict[str, dict[str, object]]]):
         device = self.devices.get(device_id)
         if device is None:
             raise HomeAssistantError(f"Unknown ORVIBO device: {device_id}")
-        if device.get("_orvibo_read_only"):
+        if device.get("_orvibo_read_only") or device.get("_orvibo_status_only"):
             raise HomeAssistantError(f"ORVIBO device {device_id} is read-only")
         uid_value = device.get("uid")
         if not isinstance(uid_value, str) or not uid_value:

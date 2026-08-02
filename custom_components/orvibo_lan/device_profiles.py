@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Optional
 
-from .profiles import platforms_for_type
+from .profiles import is_status_only_type, platforms_for_type
 
 PROPERTY_DOOR_STATUS = "door_status"
 PROPERTY_BATTERY_POWER = "battery_power"
@@ -182,6 +182,11 @@ def normalize_readtable_devices(
         )
         device["_orvibo_lan_capable"] = lan_capable
         device["_orvibo_read_only"] = not lan_capable
+        device["_orvibo_status_only"] = (
+            is_status_only_type(normalize_device_type(raw_device_type))
+            if raw_device_type not in (None, "")
+            else False
+        )
         normalized[device_id] = device
 
     for device_id, state in statuses.items():

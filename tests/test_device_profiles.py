@@ -10,6 +10,7 @@ from custom_components.orvibo_lan.device_profiles import (
     property_switch_state,
     verified_profile_name,
 )
+from custom_components.orvibo_lan.profiles import is_status_only_type
 from custom_components.orvibo_lan.lib import device_control
 from custom_components.orvibo_lan.lib.device_control import (
     fan_off,
@@ -24,6 +25,32 @@ def test_control_serials_are_unique_across_a_burst() -> None:
 
     assert len({payload["serial"] for payload in payloads}) == 100
     assert len({payload["uniSerial"] for payload in payloads}) == 100
+
+
+def test_door_locks_are_status_only_and_never_controllable() -> None:
+    """门锁（107/300/522）只有状态能力，不允许下发控制命令。"""
+
+    assert is_status_only_type(107)
+    assert is_status_only_type(300)
+    assert is_status_only_type(522)
+    assert not is_status_only_type(0)
+    assert not is_status_only_type(38)
+
+    normalized = normalize_readtable_devices(
+        [
+            {
+                "deviceId": "lock-522",
+                "deviceType": 522,
+                "uid": "gateway-1",
+                "deviceName": "Zigbee 门锁",
+            }
+        ],
+        {},
+        {"gateway-1"},
+    )
+    assert normalized
+    assert normalized[0]["_orvibo_lan_capable"] is True
+    assert normalized[0]["_orvibo_status_only"] is True
 
 
 def test_property_light_brightness_profiles_share_wire_shape() -> None:
