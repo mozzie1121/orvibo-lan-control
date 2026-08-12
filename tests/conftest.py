@@ -220,12 +220,24 @@ light.ColorMode = type(
 
 cover = component_module("cover")
 cover.ATTR_POSITION = "position"
+cover.ATTR_TILT_POSITION = "tilt_position"
 cover.CoverDeviceClass = type(
     "CoverDeviceClass",
     (),
     {"SHUTTER": "shutter", "CURTAIN": "curtain"},
 )
 cover.CoverEntity = type("CoverEntity", (), {})
+cover.CoverEntityFeature = type(
+    "CoverEntityFeature",
+    (),
+    {
+        "OPEN": 1,
+        "CLOSE": 2,
+        "STOP": 4,
+        "SET_POSITION": 8,
+        "SET_TILT_POSITION": 16,
+    },
+)
 
 fan = component_module("fan")
 fan.FanEntity = type("FanEntity", (), {})

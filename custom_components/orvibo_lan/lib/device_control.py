@@ -701,6 +701,109 @@ def cover_position(
     return curtain_control(device_id, uid, max(0, min(int(position), 100)), username)
 
 
+def _curtain_property_base(
+    device_id: str,
+    uid: str,
+    username: str = "",
+) -> dict:
+    serial = _serial()
+    uniSerial = _uni_serial()
+    return {
+        "uid": uid,
+        "userName": username,
+        "deviceId": device_id,
+        "groupId": "",
+        "order": "set property",
+        "value1": 0,
+        "value2": 0,
+        "value3": 0,
+        "value4": 0,
+        "delayTime": 0,
+        "cmd": CMD_CONTROL,
+        "serial": serial,
+        "clientType": 1,
+        "uniSerial": uniSerial,
+        "serverRecord": False,
+        "ver": SOFTWARE_VER,
+        "properties": {},
+    }
+
+
+def cover_curtain_angle_open(
+    device_id: str,
+    uid: str,
+    angle_deg: int,
+    username: str = "",
+) -> dict:
+    """梦幻帘(506)打开。set property curtain percent=100，保留叶片角度。"""
+    payload = _curtain_property_base(device_id, uid, username)
+    payload["properties"] = {
+        "curtain": {"percent": 100, "angle": max(0, min(int(angle_deg), 180))}
+    }
+    return _to_lan(payload)
+
+
+def cover_curtain_angle_close(
+    device_id: str,
+    uid: str,
+    angle_deg: int,
+    username: str = "",
+) -> dict:
+    """梦幻帘(506)关闭。set property curtain percent=0，保留叶片角度。"""
+    payload = _curtain_property_base(device_id, uid, username)
+    payload["properties"] = {
+        "curtain": {"percent": 0, "angle": max(0, min(int(angle_deg), 180))}
+    }
+    return _to_lan(payload)
+
+
+def cover_curtain_angle_stop(
+    device_id: str,
+    uid: str,
+    username: str = "",
+) -> dict:
+    """梦幻帘(506)停止。set property curtain action=stop。"""
+    payload = _curtain_property_base(device_id, uid, username)
+    payload["properties"] = {"curtain": {"action": "stop"}}
+    return _to_lan(payload)
+
+
+def cover_curtain_angle_position(
+    device_id: str,
+    uid: str,
+    position: int,
+    angle_deg: int,
+    username: str = "",
+) -> dict:
+    """梦幻帘(506)位置控制。set property curtain percent=位置, angle=角度。"""
+    payload = _curtain_property_base(device_id, uid, username)
+    payload["properties"] = {
+        "curtain": {
+            "percent": max(0, min(int(position), 100)),
+            "angle": max(0, min(int(angle_deg), 180)),
+        }
+    }
+    return _to_lan(payload)
+
+
+def cover_curtain_angle_tilt(
+    device_id: str,
+    uid: str,
+    angle_deg: int,
+    position: int,
+    username: str = "",
+) -> dict:
+    """梦幻帘(506)叶片角度控制。set property curtain angle=度数, percent=保持。"""
+    payload = _curtain_property_base(device_id, uid, username)
+    payload["properties"] = {
+        "curtain": {
+            "angle": max(0, min(int(angle_deg), 180)),
+            "percent": max(0, min(int(position), 100)),
+        }
+    }
+    return _to_lan(payload)
+
+
 def curtain_control(
     device_id: str,
     uid: str,

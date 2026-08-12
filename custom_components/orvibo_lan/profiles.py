@@ -42,6 +42,7 @@ DEVICE_PROFILES: dict[int, DeviceProfile] = {
     501: DeviceProfile(frozenset({PLATFORM_LIGHT})),
     502: DeviceProfile(frozenset({PLATFORM_LIGHT})),
     503: DeviceProfile(frozenset({PLATFORM_LIGHT})),
+    506: DeviceProfile(frozenset({PLATFORM_COVER})),
     516: DeviceProfile(frozenset({PLATFORM_FAN})),
     522: DeviceProfile(frozenset({PLATFORM_SENSOR}), status_only=True),
 }
