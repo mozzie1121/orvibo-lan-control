@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from contextlib import suppress
 
 import aiohttp
+from homeassistant.components import persistent_notification
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
@@ -35,7 +36,7 @@ from .lib.cloud_client import CloudAuthenticationError, CloudClient
 from .lib.gateway_connection import GatewayConnectionError
 from .lib.packet import CMD_STATE_UPDATE
 from .models import StateSource, StateUpdate
-from .privacy import mask_identifier
+from .privacy import mask_host, mask_identifier
 from .state_store import StateStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -126,12 +127,39 @@ class OrviboLanCoordinator(DataUpdateCoordinator[dict[str, dict[str, object]]]):
             self.password,
             self._gateway_ips,
             push_callback=self._on_status_update,
+            state_callback=self._on_gateway_connectivity,
         )
         await self._connect_all_gateways()
+        if self.gateway_manager is not None:
+            await self.gateway_manager.start_monitoring()
         self._discover_task = self.hass.async_create_background_task(
             self._gateway_discover_loop(),
             name=f"{DOMAIN}_gateway_discovery",
         )
+
+    async def _on_gateway_connectivity(
+        self,
+        gateway_uid: str,
+        connected: bool,
+    ) -> None:
+        """Raise or dismiss a persistent notification on gateway link changes."""
+
+        if self._closed:
+            return
+        host = self._gateway_ips.get(gateway_uid) or gateway_uid
+        notification_id = f"{DOMAIN}_gateway_{mask_identifier(gateway_uid)}"
+        if connected:
+            persistent_notification.async_dismiss(self.hass, notification_id)
+            _LOGGER.info("ORVIBO gateway %s reconnected", mask_host(host))
+            return
+        persistent_notification.async_create(
+            self.hass,
+            f"ORVIBO 网关 {mask_host(host)} 连接已断开，正在自动重连。"
+            "期间命令下发与状态同步可能暂时不可用。",
+            title="ORVIBO 网关断连",
+            notification_id=notification_id,
+        )
+        _LOGGER.warning("ORVIBO gateway %s disconnected; auto-reconnecting", mask_host(host))
 
     async def _async_setup(self) -> None:
         """Compatibility wrapper for older callers."""

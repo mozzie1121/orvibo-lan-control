@@ -186,6 +186,11 @@ def component_module(name: str) -> types.ModuleType:
     return module
 
 
+persistent_notification = component_module("persistent_notification")
+persistent_notification.async_create = MagicMock()
+persistent_notification.async_dismiss = MagicMock()
+
+
 sensor = component_module("sensor")
 sensor.SensorDeviceClass = type(
     "SensorDeviceClass",

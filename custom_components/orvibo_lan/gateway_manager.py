@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import ipaddress
 import logging
 from collections.abc import Awaitable, Callable, Mapping
@@ -16,11 +17,17 @@ from .lib.gateway_connection import (
     GatewayConnectionError,
     PushCallback,
 )
+from .privacy import mask_identifier
 
 _LOGGER = logging.getLogger(__name__)
 
 ConnectionFactory = Callable[[str], GatewayConnection]
 ManagerPushCallback = Callable[[str, Mapping[str, Any]], Awaitable[None] | None]
+StateCallback = Callable[[str, bool], Awaitable[None] | None]
+
+# 断线自动重连：5s 检查一次，重连失败按 5s->60s 指数退避，避免对失效网关高频轰炸。
+_DEFAULT_MONITOR_INTERVAL = 5.0
+_DEFAULT_MAX_BACKOFF = 60.0
 
 
 @dataclass(slots=True)
@@ -42,14 +49,23 @@ class GatewayManager:
         discovery: GatewayDiscovery | None = None,
         connection_factory: ConnectionFactory | None = None,
         push_callback: ManagerPushCallback | None = None,
+        state_callback: StateCallback | None = None,
+        monitor_interval: float = _DEFAULT_MONITOR_INTERVAL,
+        max_reconnect_backoff: float = _DEFAULT_MAX_BACKOFF,
     ) -> None:
         self.username = username
         self.password = password
         self._discovery = discovery or GatewayDiscovery()
         self._connection_factory = connection_factory or GatewayConnection
         self._push_callback = push_callback
+        self._state_callback = state_callback
+        self._monitor_interval = monitor_interval
+        self._max_reconnect_backoff = max_reconnect_backoff
         self._records: dict[str, _GatewayRecord] = {}
         self._locks: dict[str, asyncio.Lock] = {}
+        self._monitor_tasks: dict[str, asyncio.Task[None]] = {}
+        self._connectivity: dict[str, bool] = {}
+        self._monitoring = False
         self._closed = False
         self.update_cloud_gateways(cloud_gateways)
 
@@ -116,6 +132,7 @@ class GatewayManager:
                 connection = record.connection if record is not None else None
             if connection is not None:
                 await connection.close()
+        self._ensure_monitors()
 
     async def send(
         self,
@@ -187,6 +204,16 @@ class GatewayManager:
         """Idempotently detach and close every managed connection."""
 
         self._closed = True
+        self._monitoring = False
+
+        cancelled = [
+            task
+            for task in self._monitor_tasks.values()
+            if task is not None and not task.done()
+        ]
+        for task in cancelled:
+            task.cancel()
+        self._monitor_tasks.clear()
 
         async def close_record(uid: str, record: _GatewayRecord) -> None:
             async with self._lock(uid):
@@ -204,6 +231,96 @@ class GatewayManager:
                     "Failed to close an ORVIBO gateway connection (%s)",
                     type(result).__name__,
                 )
+        for task in cancelled:
+            with suppress(asyncio.CancelledError, Exception):
+                await task
+
+    async def start_monitoring(self) -> None:
+        """Begin background keep-alive and auto-reconnect for known gateways."""
+
+        if self._closed:
+            return
+        self._monitoring = True
+        self._ensure_monitors()
+
+    def _ensure_monitors(self) -> None:
+        """Spawn a monitor task per known UID and drop orphaned monitors."""
+
+        if self._monitoring:
+            for uid in self._records:
+                if uid not in self._monitor_tasks:
+                    self._monitor_tasks[uid] = asyncio.create_task(
+                        self._monitor_loop(uid),
+                        name=f"orvibo-monitor-{mask_identifier(uid)}",
+                    )
+        for uid in set(self._monitor_tasks) - set(self._records):
+            task = self._monitor_tasks.pop(uid, None)
+            if task is not None and not task.done():
+                task.cancel()
+
+    async def _monitor_loop(self, uid: str) -> None:
+        """Keep the gateway connected and report connectivity transitions."""
+
+        _LOGGER.debug(
+            "Started ORVIBO connectivity monitor for %s",
+            mask_identifier(uid),
+        )
+        backoff = self._monitor_interval
+        while not self._closed and uid in self._records:
+            record = self._records[uid]
+            connection = record.connection
+            connected = connection is not None and connection.connected
+            try:
+                await self._set_connectivity(uid, connected)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                _LOGGER.exception(
+                    "ORVIBO connectivity callback failed for %s",
+                    mask_identifier(uid),
+                )
+
+            if connected:
+                backoff = self._monitor_interval
+                await asyncio.sleep(self._monitor_interval)
+                continue
+
+            try:
+                async with self._lock(uid):
+                    if self._closed or uid not in self._records:
+                        return
+                    current = self._records[uid].connection
+                    if current is not None and current.connected:
+                        continue
+                    await self._reconnect_locked(uid, self._records[uid], current)
+            except GatewayConnectionError as err:
+                _LOGGER.debug(
+                    "ORVIBO gateway %s reconnect attempt failed (%s)",
+                    mask_identifier(uid),
+                    type(err).__name__,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                _LOGGER.exception(
+                    "ORVIBO gateway %s reconnect attempt crashed",
+                    mask_identifier(uid),
+                )
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2.0, self._max_reconnect_backoff)
+
+    async def _set_connectivity(self, uid: str, connected: bool) -> None:
+        """Notify the caller only on real connectivity transitions."""
+
+        if self._connectivity.get(uid) == connected:
+            return
+        self._connectivity[uid] = connected
+        callback = self._state_callback
+        if callback is None:
+            return
+        result = callback(uid, connected)
+        if inspect.isawaitable(result):
+            await result
 
     async def _ensure_locked(
         self,

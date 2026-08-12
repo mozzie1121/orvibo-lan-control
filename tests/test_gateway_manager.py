@@ -191,3 +191,105 @@ async def test_push_callback_is_bound_to_gateway_uid() -> None:
 
     assert pushes == [("gateway-1", payload)]
     await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_monitor_reconnects_after_disconnect() -> None:
+    created: list[FakeConnection] = []
+
+    def factory(host: str) -> FakeConnection:
+        connection = FakeConnection(host)
+        created.append(connection)
+        return connection
+
+    manager = GatewayManager(
+        "user",
+        "password",
+        {"uid": "192.168.1.2"},
+        connection_factory=factory,
+        monitor_interval=0.01,
+        max_reconnect_backoff=0.01,
+    )
+    await manager.ensure("uid")
+    await manager.start_monitoring()
+
+    await created[0].close()
+
+    for _ in range(200):
+        if len(created) >= 2 and manager.is_connected("uid"):
+            break
+        await asyncio.sleep(0.01)
+
+    assert manager.is_connected("uid")
+    assert len(created) >= 2
+    await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_monitor_reports_connectivity_transitions() -> None:
+    created: list[FakeConnection] = []
+    events: list[tuple[str, bool]] = []
+
+    def factory(host: str) -> FakeConnection:
+        connection = FakeConnection(host)
+        created.append(connection)
+        return connection
+
+    manager = GatewayManager(
+        "user",
+        "password",
+        {"uid": "192.168.1.2"},
+        connection_factory=factory,
+        state_callback=lambda uid, connected: events.append((uid, connected)),
+        monitor_interval=0.01,
+        max_reconnect_backoff=0.01,
+    )
+    await manager.ensure("uid")
+    await manager.start_monitoring()
+
+    for _ in range(200):
+        if ("uid", True) in events:
+            break
+        await asyncio.sleep(0.01)
+
+    await created[0].close()
+
+    for _ in range(400):
+        if events.count(("uid", True)) >= 2 and manager.is_connected("uid"):
+            break
+        await asyncio.sleep(0.01)
+
+    assert ("uid", False) in events
+    assert events.count(("uid", True)) >= 2
+    assert manager.is_connected("uid")
+    await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_close_stops_monitor_reconnect() -> None:
+    created: list[FakeConnection] = []
+
+    def factory(host: str) -> FakeConnection:
+        connection = FakeConnection(host)
+        created.append(connection)
+        return connection
+
+    manager = GatewayManager(
+        "user",
+        "password",
+        {"uid": "192.168.1.2"},
+        connection_factory=factory,
+        monitor_interval=0.01,
+        max_reconnect_backoff=0.01,
+    )
+    await manager.ensure("uid")
+    await manager.start_monitoring()
+
+    connection = created[0]
+    await manager.close()
+
+    await connection.close()
+    await asyncio.sleep(0.05)
+
+    assert len(created) == 1
+    assert manager._monitor_tasks == {}
