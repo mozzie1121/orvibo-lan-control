@@ -391,7 +391,7 @@ class CloudClient:
         mixpad_uids = {
             uid
             for device in devices
-            if device.get("deviceType") == 114
+            if device.get("deviceType") in (114, 510)
             and isinstance((uid := device.get("uid")), str)
             and uid
         }

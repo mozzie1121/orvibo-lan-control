@@ -73,7 +73,7 @@ async def _load_devices(
     result: list[JsonObject] = []
     for device in normalize_readtable_devices(devices, statuses, set(gateway_ips)):
         device_type = device.get("deviceType")
-        if device_type in HIDDEN_TYPES or device_type == 114:
+        if device_type in HIDDEN_TYPES or device_type in (114, 510):
             continue
         device_id = str(device["deviceId"])
         state = statuses.get(device_id, {})

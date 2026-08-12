@@ -252,7 +252,7 @@ async def async_setup_entry(
             continue
         if dt in HIDDEN_TYPES:
             continue
-        if dt == 114:
+        if dt in (114, 510):
             continue
 
         entities.append(OrviboLanLight(coordinator, did, device, dt))

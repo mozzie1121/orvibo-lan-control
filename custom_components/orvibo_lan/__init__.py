@@ -252,7 +252,7 @@ def _register_devices(
     selected = selected_device_ids(entry.options, coordinator.devices)
     for device_id, device in coordinator.devices.items():
         device_type = coordinator.device_types.get(device_id, 0)
-        if device_id not in selected or device_type in HIDDEN_TYPES or device_type == 114:
+        if device_id not in selected or device_type in HIDDEN_TYPES or device_type in (114, 510):
             continue
         info: dict[str, object] = {
             "config_entry_id": entry.entry_id,
@@ -282,7 +282,7 @@ async def _async_assign_areas(
     area_registry = ar.async_get(hass)
     device_registry = dr.async_get(hass)
     for device_id, device in coordinator.devices.items():
-        if coordinator.device_types.get(device_id, 0) == 114:
+        if coordinator.device_types.get(device_id, 0) in (114, 510):
             continue
         room_name = coordinator.get_room_name(device_id)
         if not room_name:
